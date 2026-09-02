@@ -2,6 +2,7 @@
 import argparse
 import pickle
 
+from src.bounds import floor_report
 from src.cost import score
 from src.model import CutConfig, load_config
 from src.report import cliff_report, cut_list
@@ -20,6 +21,8 @@ pats, demand = d["patterns"], d["demand"]
 cfg = load_config(a.config) if a.config and os.path.exists(a.config) else CutConfig()
 sc = score(pats, cfg)
 print(sc)
+print()
+print(floor_report(demand, cfg, sc))
 print()
 if a.cliff:
     print(cliff_report(demand, cfg))

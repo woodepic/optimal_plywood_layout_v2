@@ -5,6 +5,7 @@ import argparse
 import random
 import time
 
+from src.bounds import floor_report
 from src.cost import score
 from src.heuristic import solve
 from src.improve import improve
@@ -128,6 +129,9 @@ def main():
         got = sc.sheets_by_thickness.get(t, 0)
         print(f'    {t}" ply                {got} sheets  (floor {bounds[t]:.2f} -> '
               f'{_ceil(bounds[t])}, gap {got - _ceil(bounds[t])})')
+
+    print()
+    print(floor_report(demand, cfg, sc))
 
     save_if_better(best, best_score, demand, cfg, args.out)
 
