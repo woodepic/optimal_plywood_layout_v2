@@ -174,7 +174,6 @@ class Pattern:
         n_wide_cross = 0
         n_trims = 0
         trim_widths = set()
-        mitre_lengths = set()
         for s in self.strips:
             rem = along - s.used_length(cfg)
             cuts = len(s.placements) if rem > 0 else max(0, len(s.placements) - 1)
@@ -182,13 +181,10 @@ class Pattern:
                 n_wide_cross += cuts
             else:
                 n_cross += cuts
-                # all of a sheet's mitre-bound strips come to the saw together, so one
-                # stop setting serves every part of that length across all of them
-                mitre_lengths.update(p.length for p in s.placements)
             tw = s.trim_widths()
             n_trims += len(tw)
             trim_widths.update(tw)
-        mitre_stops = len(mitre_lengths)
+        mitre_stops = sum(len(r) for r in self.mitre_run_sequences(cfg))
 
         widths = [s.width for s in self.strips]
         return {
@@ -204,6 +200,27 @@ class Pattern:
             "n_parts": sum(len(s.placements) for s in self.strips),
             "used_area": sum(p.length * p.width for s in self.strips for p in s.placements),
         }
+
+    def mitre_run_sequences(self, cfg: CutConfig) -> list[list[int]]:
+        """Per mitre-bound strip, the run-lengths the stop block must be set to, in order.
+
+        A stop block only ever cuts from the END of the strip — it cannot reach a part
+        in the middle. So the stop has to be set for each part in turn as the strip gets
+        shorter, and consecutive parts of equal length are the only ones that share a
+        setting. Parts are laid out length-sorted within a strip precisely so that equal
+        lengths end up adjacent and collapse into one run.
+        """
+        out = []
+        for s in self.strips:
+            if s.width > cfg.mitre_max_crosscut_width or not s.placements:
+                continue
+            seq = [pl.length for pl in sorted(s.placements, key=lambda p: p.offset)]
+            runs = [seq[0]]
+            for v in seq[1:]:
+                if v != runs[-1]:
+                    runs.append(v)
+            out.append(runs)
+        return out
 
     def saw_stations(self, cfg: CutConfig) -> list[str]:
         """Which saw is used, in order, to break this sheet down.
@@ -236,3 +253,76 @@ class Pattern:
             for p in s.placements:
                 out[p.part] = out.get(p.part, 0) + 1
         return out
+
+
+# --- configuration as data -------------------------------------------------------
+# The UI will need to change costs at runtime, so CutConfig round-trips through a
+# plain dict in HUMAN units — inches and minutes — never internal 1/32" grid units.
+# Anything ending _in is inches; the loader converts and rounds lengths up to grid.
+
+_LENGTH_FIELDS = {
+    "sheet_w": "sheet_width_in",
+    "sheet_l": "sheet_length_in",
+    "sheet_edge_trim_across": "sheet_edge_trim_across_in",
+    "sheet_edge_trim_along": "sheet_edge_trim_along_in",
+    "kerf_track_saw": "kerf_track_saw_in",
+    "kerf_mitre_saw": "kerf_mitre_saw_in",
+    "mitre_max_crosscut_width": "mitre_max_crosscut_width_in",
+}
+
+_PLAIN_FIELDS = (
+    "labour_dollars_per_hour",
+    "min_per_track_rip",
+    "extra_min_per_track_stop_change",
+    "min_per_track_crosscut",
+    "min_per_mitre_crosscut",
+    "extra_min_per_mitre_stop_change",
+    "min_per_trim_rip",
+    "extra_min_per_trim_stop_change",
+    "min_per_sheet_setup",
+    "min_per_strip_handling",
+    "min_per_saw_changeover",
+    "allow_trim",
+)
+
+
+def config_to_dict(cfg: CutConfig) -> dict:
+    out = {human: to_inches(getattr(cfg, field))
+           for field, human in _LENGTH_FIELDS.items()}
+    out.update({f: getattr(cfg, f) for f in _PLAIN_FIELDS})
+    out["sheet_cost_by_thickness"] = {str(t): c for t, c in cfg.sheet_cost_by_thickness}
+    return out
+
+
+def config_from_dict(d: dict) -> CutConfig:
+    """Build a CutConfig from human units. Unknown keys are rejected, not ignored."""
+    known = set(_LENGTH_FIELDS.values()) | set(_PLAIN_FIELDS) | {"sheet_cost_by_thickness"}
+    unknown = set(d) - known
+    if unknown:
+        raise ValueError(f"unknown config keys: {sorted(unknown)}")
+
+    kw = {}
+    for field, human in _LENGTH_FIELDS.items():
+        if human in d:
+            kw[field] = to_units(d[human])
+    for f in _PLAIN_FIELDS:
+        if f in d:
+            kw[f] = d[f]
+    if "sheet_cost_by_thickness" in d:
+        kw["sheet_cost_by_thickness"] = tuple(
+            (float(t), float(c)) for t, c in
+            sorted(d["sheet_cost_by_thickness"].items(), key=lambda kv: -float(kv[0])))
+    return CutConfig(**kw)
+
+
+def load_config(path: str) -> CutConfig:
+    import json
+    with open(path) as f:
+        return config_from_dict(json.load(f))
+
+
+def save_config(cfg: CutConfig, path: str) -> None:
+    import json
+    with open(path, "w") as f:
+        json.dump(config_to_dict(cfg), f, indent=2, sort_keys=True)
+        f.write("\n")

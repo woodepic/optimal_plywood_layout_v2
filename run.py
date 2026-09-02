@@ -8,7 +8,7 @@ import time
 from src.cost import score
 from src.heuristic import solve
 from src.improve import improve
-from src.model import GRID, CutConfig
+from src.model import GRID, CutConfig, load_config
 from src.parts import apply_shave, area_bound, load_demand, summarise
 from src.validate import LayoutError, check_job
 
@@ -23,10 +23,20 @@ def main():
     ap.add_argument("--improve", type=int, default=60)
     ap.add_argument("--out", default="out/best.pkl")
     ap.add_argument("--shave", type=float, default=0.0, help="what-if: shave up to X inches off near-miss widths")
+    ap.add_argument("--config", default="config.json", help="cost model JSON; omit to use built-in defaults")
     ap.add_argument("--no-trim", action="store_true", help="exact 2-stage only")
     args = ap.parse_args()
 
-    cfg = CutConfig(allow_trim=not args.no_trim)
+    import os
+    if args.config and os.path.exists(args.config):
+        cfg = load_config(args.config)
+        print(f"cost model: {args.config}")
+    else:
+        cfg = CutConfig()
+        print("cost model: built-in defaults")
+    if args.no_trim:
+        import dataclasses
+        cfg = dataclasses.replace(cfg, allow_trim=False)
     demand = load_demand(args.step, cfg)
     if args.shave > 0:
         from src.model import to_units

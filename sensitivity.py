@@ -8,13 +8,17 @@ import dataclasses
 import pickle
 
 from src.cost import score
+from src.model import CutConfig, load_config
 
 ap = argparse.ArgumentParser()
 ap.add_argument("pkl", nargs="?", default="out/best.pkl")
+ap.add_argument("--config", default="config.json")
 a = ap.parse_args()
 
 d = pickle.load(open(a.pkl, "rb"))
-pats, cfg = d["patterns"], d["cfg"]
+import os
+pats = d["patterns"]
+cfg = load_config(a.config) if a.config and os.path.exists(a.config) else CutConfig()
 base = score(pats, cfg)
 
 print(f"layout: {base.n_sheets} sheets, {base.n_rips} rips, "

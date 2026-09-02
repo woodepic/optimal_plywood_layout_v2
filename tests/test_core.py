@@ -218,18 +218,59 @@ def test_saw_changeovers():
           f"expected track,mitre,track with a trim, got {p2.saw_stations(cfg)}")
 
 
-def test_mitre_stops_are_per_sheet():
-    """One stop setting serves every part of that length across all a sheet's strips."""
+def test_mitre_stop_sequencing():
+    """The stop block only reaches the strip's END, so settings are sequential."""
     cfg = CutConfig()
     pt = _mk(10, 20, qty=4)
-    # two narrow strips, both holding two 20in parts: one length, so one stop setting
+    # two narrow strips, each holding two 20in parts: one run each, and the second
+    # strip's leading run reuses the setting the first left behind -> 1 setting total
     p = Pattern(thickness=0.5,
                 strips=[_strip(cfg, 10, [(pt, 10, 20)] * 2),
                         _strip(cfg, 10, [(pt, 10, 20)] * 2)])
     check_pattern(p, cfg)
-    c = p.counts(cfg)
-    check(c["mitre_stops"] == 1,
-          f"expected 1 mitre stop for one repeated length, got {c['mitre_stops']}")
+    check(score([p], cfg).n_mitre_stops == 1,
+          f"expected 1 setting for one repeated length, "
+          f"got {score([p], cfg).n_mitre_stops}")
+
+    # strip A = [30, 20], strip B = [20, 30]. A costs 2 settings and leaves the stop
+    # at 20; B can be fed 20-end first and so costs 1 more. Total 3 -- not the 2 a
+    # per-sheet distinct-length count would claim, nor the 4 of no carryover at all.
+    a = _mk(10, 30)
+    b = _mk(10, 20)
+    p2 = Pattern(thickness=0.5,
+                 strips=[_strip(cfg, 10, [(a, 10, 30), (b, 10, 20)]),
+                         _strip(cfg, 10, [(b, 10, 20), (a, 10, 30)])])
+    check_pattern(p2, cfg)
+    got = score([p2], cfg).n_mitre_stops
+    check(got == 3, f"expected 3 sequenced mitre settings, got {got}")
+
+
+def test_mitre_stop_cannot_reach_the_middle():
+    """A length repeated either side of a different one cannot share its setting."""
+    cfg = CutConfig()
+    short = _mk(10, 20, qty=2)
+    tall = _mk(10, 30)
+    # deliberately laid out 20, 30, 20 -- three runs, so three stop settings, even
+    # though only two distinct lengths are present
+    s = Strip(width=to_units(10))
+    off = 0
+    for pt, l in ((short, 20), (tall, 30), (short, 20)):
+        s.placements.append(Placement(part=pt, length=to_units(l),
+                                      width=to_units(10), offset=off))
+        off += to_units(l) + cfg.kerf_mitre_saw
+    p = Pattern(thickness=0.5, strips=[s])
+    check_pattern(p, cfg)
+    runs = p.mitre_run_sequences(cfg)[0]
+    check(len(runs) == 3, f"expected 3 runs for 20,30,20 layout, got {runs}")
+    check(score([p], cfg).n_mitre_stops == 3,
+          f"expected 3 settings, got {score([p], cfg).n_mitre_stops}")
+
+    # the solver's own length-sorted layout collapses those to two runs
+    s2 = _strip(cfg, 10, [(tall, 10, 30), (short, 10, 20), (short, 10, 20)])
+    p2 = Pattern(thickness=0.5, strips=[s2])
+    check_pattern(p2, cfg)
+    check(len(p2.mitre_run_sequences(cfg)[0]) == 2,
+          "length-sorted layout should collapse equal lengths into one run")
 
 
 def test_stop_carryover():

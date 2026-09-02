@@ -73,6 +73,40 @@ def sequence_rips(patterns: list[Pattern], cfg: CutConfig) -> tuple[list[int], i
     return order, stops
 
 
+def sequence_crosscuts(patterns: list[Pattern], order: list[int],
+                       cfg: CutConfig) -> int:
+    """Total mitre stop settings over the job, harvesting carryovers.
+
+    Each strip must be cut end-inward, so its run sequence is fixed up to reversal —
+    you may feed either end first. Within a sheet the strips can be taken in any
+    order, and a strip whose leading run matches the stop already set costs one setting
+    less. Settings chain across sheets the same way the track saw stop does.
+    """
+    stops = 0
+    current: int | None = None
+    for i in order:
+        pending = patterns[i].mitre_run_sequences(cfg)
+        while pending:
+            best_k, best_runs = None, None
+            for k, runs in enumerate(pending):
+                for cand in (runs, runs[::-1]):
+                    if current is not None and cand[0] == current:
+                        best_k, best_runs = k, cand
+                        break
+                if best_k is not None:
+                    break
+            if best_k is None:
+                # nothing reuses the current setting; take the longest run sequence
+                best_k = max(range(len(pending)), key=lambda k: len(pending[k]))
+                best_runs = pending[best_k]
+                stops += len(best_runs)
+            else:
+                stops += len(best_runs) - 1
+            current = best_runs[-1]
+            pending.pop(best_k)
+    return stops
+
+
 def count_saw_changeovers(patterns: list[Pattern], order: list[int],
                           cfg: CutConfig) -> int:
     """Times you walk from one saw to the other over the whole job.
@@ -95,6 +129,7 @@ def score(patterns: list[Pattern], cfg: CutConfig) -> Score:
 
     order, n_track_stops = sequence_rips(patterns, cfg)
     n_changeovers = count_saw_changeovers(patterns, order, cfg)
+    n_mitre_stops = sequence_crosscuts(patterns, order, cfg)
 
     material = 0.0
     by_thick: dict[float, int] = {}
@@ -113,7 +148,7 @@ def score(patterns: list[Pattern], cfg: CutConfig) -> Score:
         + cfg.extra_min_per_track_stop_change * n_track_stops
         + cfg.min_per_mitre_crosscut * agg["n_cross"]
         + cfg.min_per_track_crosscut * agg["n_wide_cross"]
-        + cfg.extra_min_per_mitre_stop_change * agg["mitre_stops"]
+        + cfg.extra_min_per_mitre_stop_change * n_mitre_stops
         + cfg.min_per_trim_rip * agg["n_trims"]
         + cfg.extra_min_per_trim_stop_change * agg["n_trim_widths"]
         + cfg.min_per_sheet_setup * len(patterns)
@@ -136,7 +171,7 @@ def score(patterns: list[Pattern], cfg: CutConfig) -> Score:
         n_wide_cross=agg["n_wide_cross"],
         n_trims=agg["n_trims"],
         n_trim_stops=agg["n_trim_widths"],
-        n_mitre_stops=agg["mitre_stops"],
+        n_mitre_stops=n_mitre_stops,
         n_saw_changeovers=n_changeovers,
         n_parts=agg["n_parts"],
         used_area=agg["used_area"],

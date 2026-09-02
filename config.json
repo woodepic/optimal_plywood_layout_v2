@@ -1,0 +1,25 @@
+{
+  "allow_trim": true,
+  "extra_min_per_mitre_stop_change": 1.0,
+  "extra_min_per_track_stop_change": 4.0,
+  "extra_min_per_trim_stop_change": 4.0,
+  "kerf_mitre_saw_in": 0.0625,
+  "kerf_track_saw_in": 0.0625,
+  "labour_dollars_per_hour": 75.0,
+  "min_per_mitre_crosscut": 0.25,
+  "min_per_saw_changeover": 1.0,
+  "min_per_sheet_setup": 5.0,
+  "min_per_strip_handling": 1.0,
+  "min_per_track_crosscut": 5.0,
+  "min_per_track_rip": 1.0,
+  "min_per_trim_rip": 1.0,
+  "mitre_max_crosscut_width_in": 14.0,
+  "sheet_cost_by_thickness": {
+    "0.5": 60.0,
+    "0.75": 75.0
+  },
+  "sheet_edge_trim_across_in": 0.0,
+  "sheet_edge_trim_along_in": 0.0,
+  "sheet_length_in": 96.0,
+  "sheet_width_in": 48.0
+}

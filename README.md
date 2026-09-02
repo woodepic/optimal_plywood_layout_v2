@@ -61,13 +61,49 @@ cut, and the middle word says which saw does the work.
 Setting `labour_dollars_per_hour = 0` recovers pure minimum-sheet-count. Setting
 `min_per_trim_rip` very high recovers exact 2-stage.
 
-**Counting rules worth knowing.** A mitre stop change is charged once per distinct
-length *per sheet*, not per strip — all a sheet's mitre-bound strips come to the saw
-together, so one setting serves every part of that length. Saw changeovers are derived
-from the station sequence each sheet actually needs: rips must come first, and a trim
-rip can only happen after its part is crosscut free, so a sheet with both mitre cuts and
-trims costs two changeovers while a track-saw-only sheet costs none. Sequences chain
-across sheets, so finishing on the track saw and starting the next sheet there is free.
+**Counting rules worth knowing.** These are where the model earns or loses its
+credibility, so they are spelled out.
+
+*Track saw stop.* One setting per distinct strip width per sheet, less one when the
+setting already standing carries over. Sheets are sequenced greedily to harvest those
+carryovers, so several strips of the same width in a row are close to free.
+
+*Mitre saw stop.* A stop block only ever cuts from the **end** of a strip — it cannot
+reach a part in the middle. So the stop is reset for each part in turn as the strip gets
+shorter, and only *consecutive* parts of equal length share a setting. Parts are laid
+out length-sorted within each strip precisely so equal lengths become adjacent and
+collapse into one run. A strip may be fed from either end, and strips may be taken in any
+order, so settings carry over between strips and across sheets the same way rips do.
+
+*Saw changeovers.* Derived from the station sequence each sheet actually needs. Rips come
+first; a trim rip can only happen once its part is crosscut free, so it lands after the
+crosscuts and sends you back to the track saw. A sheet needing both saws costs one
+changeover, one needing a trim after mitre work costs two, and a track-saw-only sheet
+costs none. Sequences chain across sheets.
+
+## Changing costs at runtime
+
+Costs live in `config.json` in **human units** — inches and minutes, never internal
+1/32" grid units — and every CLI takes `--config`:
+
+```bash
+.venv/bin/python run.py --config config.json
+.venv/bin/python sensitivity.py          # re-score the champion under varied weights
+```
+
+`src/model.py` provides `load_config`, `save_config`, `config_to_dict` and
+`config_from_dict`. Unknown keys are rejected rather than silently ignored, so a typo in
+a slider name fails loudly. Scoring tools always read the live config rather than the
+config pickled alongside a layout, so changing a weight re-ranks existing layouts
+honestly.
+
+Three speeds, which matter for a UI:
+
+| Operation | Cost | Use |
+|---|---|---|
+| Re-score a fixed layout | milliseconds | live slider feedback |
+| Short re-solve (`-n 6 --improve 60`) | ~7 s | interactive "try it" |
+| Full search (`-n 160 --improve 320`) | ~18 min | final answer |
 
 ## The champion layout
 
