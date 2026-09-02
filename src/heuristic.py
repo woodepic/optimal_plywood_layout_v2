@@ -62,8 +62,8 @@ def _fill_strip(width: int, cands: list[tuple], remaining: Counter, cfg: CutConf
     # sharing a cut, less the cost of the trim rip it needs when w < W.
     items = []
     for _, pt, w, l in elig:
-        size = l + cfg.kerf_cross
-        val = l * (w / width) + cfg.kerf_cross
+        size = l + cfg.kerf_mitre_saw
+        val = l * (w / width) + cfg.kerf_mitre_saw
         if w < width:
             val -= trim_units
         if jitter:
@@ -73,7 +73,7 @@ def _fill_strip(width: int, cands: list[tuple], remaining: Counter, cfg: CutConf
     sizes, values, owner = split_groups(items)
     if not sizes:
         return None
-    _, _, chosen = np_knapsack(sizes, values, cfg.usable_l + cfg.kerf_cross)
+    _, _, chosen = np_knapsack(sizes, values, cfg.usable_l + cfg.kerf_mitre_saw)
 
     counts: Counter = Counter()
     for g in chosen:
@@ -89,8 +89,8 @@ def _fill_strip(width: int, cands: list[tuple], remaining: Counter, cfg: CutConf
         _, pt, w, l = elig[i]
         for _ in range(counts[i]):
             placements.append(Placement(part=pt, length=l, width=w, offset=offset))
-            offset += l + cfg.kerf_cross
-    return placements, offset - cfg.kerf_cross
+            offset += l + cfg.kerf_mitre_saw
+    return placements, offset - cfg.kerf_mitre_saw
 
 
 def _build_strips(types: list[PartType], cfg: CutConfig, rng: random.Random,
@@ -101,7 +101,7 @@ def _build_strips(types: list[PartType], cfg: CutConfig, rng: random.Random,
     thickness = types[0].thickness
     sheet_area = cfg.usable_w * cfg.usable_l
     dollars_per_area = cfg.cost_of_sheet(thickness) / sheet_area
-    trim_cost = (cfg.t_trim + cfg.t_trim_stop * 0.25) * cfg.dollars_per_min() * trim_weight
+    trim_cost = (cfg.min_per_trim_rip + cfg.extra_min_per_trim_stop_change * 0.25) * cfg.dollars_per_min() * trim_weight
 
     strips: list[Strip] = []
     while sum(remaining.values()) > 0:
@@ -117,7 +117,19 @@ def _build_strips(types: list[PartType], cfg: CutConfig, rng: random.Random,
             shrunk = max(p.width for p in placements)      # normal patterns
             part_area = sum(p.width * p.length for p in placements)
             trims = sum(1 for p in placements if p.width < shrunk)
-            value = part_area * dollars_per_area - trims * trim_cost
+            # A strip wider than the mitre saw's capacity sends every one of its
+            # crosscuts to the track saw, which costs far more per cut. That gap is
+            # large enough to outweigh material, so strip choice has to see it.
+            # Every part needs a crosscut wherever it sits, so the full cut cost is
+            # not a differential: only the *excess* from being forced onto the track
+            # saw distinguishes one strip choice from another.
+            excess = max(0.0, cfg.min_per_track_crosscut - cfg.min_per_mitre_crosscut) \
+                if shrunk > cfg.mitre_max_crosscut_width else 0.0
+            cut_cost = len(placements) * excess * cfg.dollars_per_min()
+            rip_cost = (cfg.min_per_track_rip + cfg.min_per_strip_handling) \
+                * cfg.dollars_per_min()
+            value = (part_area * dollars_per_area - trims * trim_cost
+                     - cut_cost - rip_cost)
             density = value / (shrunk * cfg.usable_l)
             if best is None or density > best[0]:
                 best = (density, shrunk, placements)
@@ -133,8 +145,8 @@ def _build_strips(types: list[PartType], cfg: CutConfig, rng: random.Random,
 def _pack_sheets(strips: list[Strip], thickness: float, cfg: CutConfig,
                  rng: random.Random) -> list[Pattern]:
     """Bin-pack strips across the sheet width, widest first so fillers stay available."""
-    cap = cfg.usable_w + cfg.kerf_rip
-    stop_penalty = (cfg.t_track_stop * cfg.dollars_per_min()
+    cap = cfg.usable_w + cfg.kerf_track_saw
+    stop_penalty = (cfg.extra_min_per_track_stop_change * cfg.dollars_per_min()
                     / (cfg.cost_of_sheet(thickness) / cfg.usable_w))
 
     pool: dict[int, list[Strip]] = {}
@@ -149,19 +161,19 @@ def _pack_sheets(strips: list[Strip], thickness: float, cfg: CutConfig,
         pat.strips.append(pool[seed_w].pop())
         if not pool[seed_w]:
             del pool[seed_w]
-        room = cap - (seed_w + cfg.kerf_rip)
+        room = cap - (seed_w + cfg.kerf_track_saw)
 
         while room > 0:
-            widths = [w for w, v in pool.items() if v and w + cfg.kerf_rip <= room]
+            widths = [w for w, v in pool.items() if v and w + cfg.kerf_track_saw <= room]
             if not widths:
                 break
             items, owner_w = [], []
             for w in widths:
-                maxm = min(len(pool[w]), room // (w + cfg.kerf_rip))
+                maxm = min(len(pool[w]), room // (w + cfg.kerf_track_saw))
                 if maxm < 1:
                     continue
                 for m in range(1, maxm + 1):
-                    size = m * (w + cfg.kerf_rip)
+                    size = m * (w + cfg.kerf_track_saw)
                     bonus = stop_penalty if w == seed_w else 0.0
                     items.append((size, float(size) - stop_penalty + bonus, 1))
                     owner_w.append((w, m))
@@ -180,10 +192,10 @@ def _pack_sheets(strips: list[Strip], thickness: float, cfg: CutConfig,
             progressed = False
             for w, m in sorted(take.items(), reverse=True):
                 for _ in range(min(m, len(pool.get(w, [])))):
-                    if room < w + cfg.kerf_rip:
+                    if room < w + cfg.kerf_track_saw:
                         break
                     pat.strips.append(pool[w].pop())
-                    room -= w + cfg.kerf_rip
+                    room -= w + cfg.kerf_track_saw
                     progressed = True
                 if w in pool and not pool[w]:
                     del pool[w]

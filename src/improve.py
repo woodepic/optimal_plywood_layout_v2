@@ -120,7 +120,7 @@ def _renumber(s: Strip, cfg: CutConfig) -> None:
     off = 0
     for pl in s.placements:
         pl.offset = off
-        off += pl.length + cfg.kerf_cross
+        off += pl.length + cfg.kerf_mitre_saw
 
 
 def _shrink(p: Pattern) -> None:
@@ -161,7 +161,7 @@ def relocate(patterns: list[Pattern], cfg: CutConfig, rng: random.Random
             if dst.width < pl.width:
                 continue
             _, along = cand[pi].sheet_dims(cfg)
-            need = pl.length + (cfg.kerf_cross if dst.placements else 0)
+            need = pl.length + (cfg.kerf_mitre_saw if dst.placements else 0)
             if dst.used_length(cfg) + need > along:
                 continue
             dst.placements.append(pl)

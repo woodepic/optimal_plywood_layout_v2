@@ -21,7 +21,7 @@ def check_pattern(p: Pattern, cfg: CutConfig, where: str = "") -> None:
         raise LayoutError(f"{prefix}pattern has no strips")
 
     # strips must fit across the sheet, with a rip kerf between each adjacent pair
-    total = sum(s.width for s in p.strips) + max(0, len(p.strips) - 1) * cfg.kerf_rip
+    total = sum(s.width for s in p.strips) + max(0, len(p.strips) - 1) * cfg.kerf_track_saw
     if total > across:
         raise LayoutError(
             f"{prefix}strips span {fmt(total)} across a {fmt(across)} sheet "
@@ -35,7 +35,7 @@ def check_pattern(p: Pattern, cfg: CutConfig, where: str = "") -> None:
 
         # parts must fit along the strip, with a crosscut kerf between each adjacent pair
         used = sum(pl.length for pl in s.placements) + \
-            max(0, len(s.placements) - 1) * cfg.kerf_cross
+            max(0, len(s.placements) - 1) * cfg.kerf_mitre_saw
         if used > along:
             raise LayoutError(
                 f"{prefix}strip {i} (w={fmt(s.width)}) uses {fmt(used)} of {fmt(along)}")
@@ -47,7 +47,7 @@ def check_pattern(p: Pattern, cfg: CutConfig, where: str = "") -> None:
                 raise LayoutError(
                     f"{prefix}strip {i} part {j} at {fmt(pl.offset)} overlaps previous "
                     f"(needs >= {fmt(cursor)})")
-            cursor = pl.offset + pl.length + cfg.kerf_cross
+            cursor = pl.offset + pl.length + cfg.kerf_mitre_saw
 
             if pl.width > s.width:
                 raise LayoutError(

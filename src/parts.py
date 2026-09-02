@@ -69,13 +69,13 @@ def apply_shave(demand: list[PartType], cfg: CutConfig, max_shave: int) -> list[
     Purely a what-if: it changes the parts, so it is never applied silently. Used to
     price how much a tiny dimensional concession is worth.
     """
-    cap = cfg.usable_w + cfg.kerf_rip
+    cap = cfg.usable_w + cfg.kerf_track_saw
 
     def shaved(w: int) -> int:
-        k = cap // (w + cfg.kerf_rip)
+        k = cap // (w + cfg.kerf_track_saw)
         if k < 1:
             return w
-        target = cap // (k + 1) - cfg.kerf_rip
+        target = cap // (k + 1) - cfg.kerf_track_saw
         if 0 < w - target <= max_shave:
             return target
         return w

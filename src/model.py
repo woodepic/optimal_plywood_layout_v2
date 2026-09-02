@@ -55,47 +55,66 @@ class PartType:
 
 @dataclass(frozen=True)
 class CutConfig:
-    """Sheet geometry, saw parameters and the full weighted cost model."""
+    """Sheet geometry, saw parameters and the full weighted cost model.
+
+    Every operation Matt named has its own knob. Names carry three pieces of
+    information: `min_per_*` is minutes charged per occurrence, `extra_min_per_*` is
+    minutes charged *on top* of the underlying cut, and the middle word says which saw
+    does the work (`track`, `mitre`, or `trim` for the third cut).
+    """
+    # --- sheet geometry (1/32" units) -----------------------------------------
     sheet_w: int = 48 * GRID
     sheet_l: int = 96 * GRID
-    trim_w: int = 0
-    trim_l: int = 0
-    kerf_rip: int = 2          # 1/16"
-    kerf_cross: int = 2        # 1/16"
-    max_crosscut_width: int = 14 * GRID
+    sheet_edge_trim_across: int = 0     # reference edge for the track saw
+    sheet_edge_trim_along: int = 0      # squaring a strip end before the mitre stop
 
-    sheet_cost: tuple = ((0.75, 75.0), (0.5, 60.0))
-    value_of_time: float = 75.0   # $/hour
+    # --- saw parameters -------------------------------------------------------
+    kerf_track_saw: int = 2             # 1/16"
+    kerf_mitre_saw: int = 2             # 1/16"
+    mitre_max_crosscut_width: int = 14 * GRID
 
-    t_rip: float = 1.0            # min, a track saw cut reusing the current stop
-    t_track_stop: float = 4.0     # min, extra when the stop must be moved (1+4 = 5)
-    t_cross: float = 0.5          # min, a mitre saw cut
-    t_mitre_stop: float = 0.0     # min, extra to reset the mitre stop block
-    t_trim: float = 1.0           # min, the third (rip) cut on a non-exact part
-    t_trim_stop: float = 4.0      # min, extra to set the stop for a trim width
-    t_wide_cross: float = 1.0     # min, crosscut on the track saw (strip too wide for mitre)
-    t_sheet_handling: float = 0.0
-    t_strip_handling: float = 0.0
-    t_tool_transition: float = 0.0
+    # --- money ----------------------------------------------------------------
+    sheet_cost_by_thickness: tuple = ((0.75, 75.0), (0.5, 60.0))
+    labour_dollars_per_hour: float = 75.0
+
+    # --- track saw: rips the sheet into strips --------------------------------
+    min_per_track_rip: float = 1.0
+    extra_min_per_track_stop_change: float = 4.0     # so a fresh width costs 1 + 4 = 5
+
+    # --- track saw: crosscuts strips too wide for the mitre saw ---------------
+    min_per_track_crosscut: float = 5.0
+
+    # --- mitre saw: crosscuts strips to length --------------------------------
+    min_per_mitre_crosscut: float = 0.25
+    extra_min_per_mitre_stop_change: float = 1.0
+
+    # --- the third cut: trim rip on a part narrower than its strip ------------
+    min_per_trim_rip: float = 1.0
+    extra_min_per_trim_stop_change: float = 4.0
+
+    # --- handling and moving between saws -------------------------------------
+    min_per_sheet_setup: float = 5.0
+    min_per_strip_handling: float = 1.0
+    min_per_saw_changeover: float = 1.0
 
     allow_trim: bool = True
 
     @property
     def usable_w(self) -> int:
-        return self.sheet_w - self.trim_w
+        return self.sheet_w - self.sheet_edge_trim_across
 
     @property
     def usable_l(self) -> int:
-        return self.sheet_l - self.trim_l
+        return self.sheet_l - self.sheet_edge_trim_along
 
     def cost_of_sheet(self, thickness: float) -> float:
-        for t, c in self.sheet_cost:
+        for t, c in self.sheet_cost_by_thickness:
             if abs(t - thickness) < 1e-6:
                 return c
         raise KeyError(f"no sheet price configured for thickness {thickness}")
 
     def dollars_per_min(self) -> float:
-        return self.value_of_time / 60.0
+        return self.labour_dollars_per_hour / 60.0
 
 
 @dataclass
@@ -121,7 +140,7 @@ class Strip:
         if not self.placements:
             return 0
         return sum(p.length for p in self.placements) + \
-            self.kerf_count() * cfg.kerf_cross
+            self.kerf_count() * cfg.kerf_mitre_saw
 
     def kerf_count(self) -> int:
         return max(0, len(self.placements) - 1)
@@ -146,7 +165,7 @@ class Pattern:
         """Physical operation counts for this one sheet."""
         across, along = self.sheet_dims(cfg)
         used_across = sum(s.width for s in self.strips) + \
-            max(0, len(self.strips) - 1) * cfg.kerf_rip
+            max(0, len(self.strips) - 1) * cfg.kerf_track_saw
         # a rip per strip, less one if the strips exactly consume the sheet width
         remainder_across = across - used_across
         n_rips = len(self.strips) if remainder_across > 0 else max(0, len(self.strips) - 1)
@@ -155,18 +174,21 @@ class Pattern:
         n_wide_cross = 0
         n_trims = 0
         trim_widths = set()
-        mitre_stops = 0
+        mitre_lengths = set()
         for s in self.strips:
             rem = along - s.used_length(cfg)
             cuts = len(s.placements) if rem > 0 else max(0, len(s.placements) - 1)
-            if s.width > cfg.max_crosscut_width:
+            if s.width > cfg.mitre_max_crosscut_width:
                 n_wide_cross += cuts
             else:
                 n_cross += cuts
-            mitre_stops += len({p.length for p in s.placements})
+                # all of a sheet's mitre-bound strips come to the saw together, so one
+                # stop setting serves every part of that length across all of them
+                mitre_lengths.update(p.length for p in s.placements)
             tw = s.trim_widths()
             n_trims += len(tw)
             trim_widths.update(tw)
+        mitre_stops = len(mitre_lengths)
 
         widths = [s.width for s in self.strips]
         return {
@@ -182,6 +204,31 @@ class Pattern:
             "n_parts": sum(len(s.placements) for s in self.strips),
             "used_area": sum(p.length * p.width for s in self.strips for p in s.placements),
         }
+
+    def saw_stations(self, cfg: CutConfig) -> list[str]:
+        """Which saw is used, in order, to break this sheet down.
+
+        Rips must come first, and a trim rip can only happen once its part has been
+        crosscut free — so trims land after the crosscuts and send you back to the
+        track saw. Track-saw crosscuts share a station with the rips and cost nothing
+        extra to reach.
+        """
+        c = self.counts(cfg)
+        seq = []
+        if c["n_rips"] > 0 or c["n_wide_cross"] > 0:
+            seq.append("track")
+        if c["n_cross"] > 0:
+            seq.append("mitre")
+        if c["n_trims"] > 0:
+            seq.append("track")
+        if not seq:
+            seq.append("track")
+        # collapse runs of the same station
+        out = [seq[0]]
+        for st in seq[1:]:
+            if st != out[-1]:
+                out.append(st)
+        return out
 
     def part_counts(self) -> dict[PartType, int]:
         out: dict[PartType, int] = {}

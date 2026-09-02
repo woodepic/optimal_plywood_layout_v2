@@ -28,6 +28,7 @@ class Score:
     n_trims: int
     n_trim_stops: int
     n_mitre_stops: int
+    n_saw_changeovers: int
     n_parts: int
     used_area: int
     sheet_order: list
@@ -72,11 +73,28 @@ def sequence_rips(patterns: list[Pattern], cfg: CutConfig) -> tuple[list[int], i
     return order, stops
 
 
+def count_saw_changeovers(patterns: list[Pattern], order: list[int],
+                          cfg: CutConfig) -> int:
+    """Times you walk from one saw to the other over the whole job.
+
+    Sheets are broken down one at a time, so the station sequences chain end to end:
+    a sheet that finishes on the track saw and is followed by one that starts there
+    costs nothing to continue.
+    """
+    stations: list[str] = []
+    for i in order:
+        for st in patterns[i].saw_stations(cfg):
+            if not stations or st != stations[-1]:
+                stations.append(st)
+    return max(0, len(stations) - 1)
+
+
 def score(patterns: list[Pattern], cfg: CutConfig) -> Score:
     if not patterns:
         raise ValueError("no patterns to score")
 
     order, n_track_stops = sequence_rips(patterns, cfg)
+    n_changeovers = count_saw_changeovers(patterns, order, cfg)
 
     material = 0.0
     by_thick: dict[float, int] = {}
@@ -91,15 +109,16 @@ def score(patterns: list[Pattern], cfg: CutConfig) -> Score:
             agg[k] += c[k]
 
     minutes = (
-        cfg.t_rip * agg["n_rips"]
-        + cfg.t_track_stop * n_track_stops
-        + cfg.t_cross * agg["n_cross"]
-        + cfg.t_wide_cross * agg["n_wide_cross"]
-        + cfg.t_mitre_stop * agg["mitre_stops"]
-        + cfg.t_trim * agg["n_trims"]
-        + cfg.t_trim_stop * agg["n_trim_widths"]
-        + cfg.t_sheet_handling * len(patterns)
-        + cfg.t_strip_handling * sum(len(p.strips) for p in patterns)
+        cfg.min_per_track_rip * agg["n_rips"]
+        + cfg.extra_min_per_track_stop_change * n_track_stops
+        + cfg.min_per_mitre_crosscut * agg["n_cross"]
+        + cfg.min_per_track_crosscut * agg["n_wide_cross"]
+        + cfg.extra_min_per_mitre_stop_change * agg["mitre_stops"]
+        + cfg.min_per_trim_rip * agg["n_trims"]
+        + cfg.extra_min_per_trim_stop_change * agg["n_trim_widths"]
+        + cfg.min_per_sheet_setup * len(patterns)
+        + cfg.min_per_strip_handling * sum(len(p.strips) for p in patterns)
+        + cfg.min_per_saw_changeover * n_changeovers
     )
     labour = minutes * cfg.dollars_per_min()
 
@@ -118,6 +137,7 @@ def score(patterns: list[Pattern], cfg: CutConfig) -> Score:
         n_trims=agg["n_trims"],
         n_trim_stops=agg["n_trim_widths"],
         n_mitre_stops=agg["mitre_stops"],
+        n_saw_changeovers=n_changeovers,
         n_parts=agg["n_parts"],
         used_area=agg["used_area"],
         sheet_order=order,

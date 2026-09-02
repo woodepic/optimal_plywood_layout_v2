@@ -79,37 +79,92 @@ def main():
               f"worst ${hist[-1]:,.0f}")
 
     sc = best_score
-    print(f"\n{'='*66}\nBEST  params={best_kw}\n{'='*66}")
-    print(f"  total cost              ${sc.dollars:,.2f}")
-    print(f"    material              ${sc.material:,.2f}  ({sc.n_sheets} sheets)")
-    print(f"    labour                ${sc.labour:,.2f}  ({sc.minutes:.0f} min = "
-          f"{sc.minutes/60:.2f} h)")
-    print(f"  sheets                  {sc.n_sheets}   " +
+    print(f"\n{'='*70}\nBEST  params={best_kw}\n{'='*70}")
+    print(f"  total cost               ${sc.dollars:,.2f}")
+    print(f"    material               ${sc.material:,.2f}   ({sc.n_sheets} sheets)")
+    print(f"    labour                 ${sc.labour:,.2f}   ({sc.minutes:.0f} min = "
+          f"{sc.minutes/60:.2f} h @ ${cfg.labour_dollars_per_hour:.0f}/h)")
+    print(f"  sheets                   {sc.n_sheets}   " +
           "  ".join(f'{t}"x{n}' for t, n in sorted(sc.sheets_by_thickness.items(),
                                                    reverse=True)))
-    print(f"  track saw cuts          {sc.n_rips}")
-    print(f"    stop adjustments      {sc.n_track_stops}  (@5 min)")
-    print(f"    reusing prev stop     {sc.n_adjacent_equal_rips}  (@1 min)")
-    print(f"  mitre saw cuts          {sc.n_cross}")
-    if sc.n_wide_cross:
-        print(f"  track saw crosscuts     {sc.n_wide_cross}  (strip wider than mitre "
-              f"capacity)")
-    print(f"  trim cuts               {sc.n_trims}  ({sc.n_trim_stops} stop settings)")
-    print(f"  parts produced          {sc.n_parts} / {sum(p.qty for p in demand)}")
+    print()
+    print("  operation                 count      min      cost")
+    rows = [
+        ("track rips", sc.n_rips, cfg.min_per_track_rip),
+        ("  track stop changes", sc.n_track_stops, cfg.extra_min_per_track_stop_change),
+        ("  rips reusing that stop", sc.n_adjacent_equal_rips, 0.0),
+        ("track crosscuts (wide)", sc.n_wide_cross, cfg.min_per_track_crosscut),
+        ("mitre crosscuts", sc.n_cross, cfg.min_per_mitre_crosscut),
+        ("  mitre stop changes", sc.n_mitre_stops, cfg.extra_min_per_mitre_stop_change),
+        ("trim rips", sc.n_trims, cfg.min_per_trim_rip),
+        ("  trim stop changes", sc.n_trim_stops, cfg.extra_min_per_trim_stop_change),
+        ("sheet setups", sc.n_sheets, cfg.min_per_sheet_setup),
+        ("strip handling", sum(len(p.strips) for p in best), cfg.min_per_strip_handling),
+        ("saw changeovers", sc.n_saw_changeovers, cfg.min_per_saw_changeover),
+    ]
+    dpm = cfg.dollars_per_min()
+    for label, n, rate in rows:
+        mins = n * rate
+        print(f"  {label:24s} {n:5d} {mins:8.1f}  ${mins*dpm:8.2f}")
+    print(f"  {'TOTAL LABOUR':24s} {'':5s} {sc.minutes:8.1f}  ${sc.labour:8.2f}")
+    print()
     util = sc.used_area / (sc.n_sheets * cfg.usable_w * cfg.usable_l)
-    print(f"  sheet utilisation       {util*100:.1f}%")
-    print(f"  area floor              {sum(bounds.values()):.2f} sheets fractional; "
+    print(f"  parts produced           {sc.n_parts} / {sum(p.qty for p in demand)}")
+    print(f"  sheet utilisation        {util*100:.1f}%")
+    print(f"  area floor               {sum(bounds.values()):.2f} sheets fractional; "
           f"integer bound {int_bound}")
-    print(f"  gap to lower bound      {sc.n_sheets - int_bound} sheet(s)")
+    print(f"  gap to lower bound       {sc.n_sheets - int_bound} sheet(s)")
     for t in sorted(bounds, reverse=True):
         got = sc.sheets_by_thickness.get(t, 0)
-        print(f'    {t}" ply               {got} sheets  (floor {bounds[t]:.2f} -> '
+        print(f'    {t}" ply                {got} sheets  (floor {bounds[t]:.2f} -> '
               f'{_ceil(bounds[t])}, gap {got - _ceil(bounds[t])})')
 
+    save_if_better(best, best_score, demand, cfg, args.out)
+
+
+def save_if_better(patterns, sc, demand, cfg, path):
+    """Keep exactly one champion layout on disk, replaced only when genuinely beaten.
+
+    The stored layout is re-scored under the *current* cost model before comparing, so
+    changing a weight re-ranks the champion honestly rather than grandfathering a score
+    computed under old weights.
+    """
+    import os
     import pickle
-    with open(args.out, "wb") as f:
-        pickle.dump({"patterns": best, "cfg": cfg, "demand": demand}, f)
-    print(f"\nsaved {args.out}")
+
+    from src.report import cut_list
+
+    key = lambda d: sorted((p.w, p.l, p.thickness, p.qty) for p in d)
+    if os.path.exists(path):
+        try:
+            prev = pickle.load(open(path, "rb"))
+        except Exception as e:
+            print(f"\nexisting {path} unreadable ({e}); replacing")
+            prev = None
+        if prev is not None:
+            if key(prev["demand"]) != key(demand):
+                print(f"\n{path} holds a layout for a different part list; replacing")
+            else:
+                try:
+                    check_job(prev["patterns"], demand, cfg)
+                    prev_sc = score(prev["patterns"], cfg)
+                except LayoutError as e:
+                    print(f"\nstored champion is invalid under the current cut model "
+                          f"({e}); leaving it untouched. Re-run without --no-trim to "
+                          f"replace it.")
+                    return
+                print(f"\nstored champion re-scored under current weights: "
+                      f"${prev_sc.dollars:,.2f}  (this run: ${sc.dollars:,.2f})")
+                if prev_sc.dollars <= sc.dollars:
+                    print(f"keeping existing {path} — not beaten")
+                    return
+
+    with open(path, "wb") as f:
+        pickle.dump({"patterns": patterns, "cfg": cfg, "demand": demand}, f)
+    txt = path.rsplit(".", 1)[0] + "_cutlist.txt"
+    with open(txt, "w") as f:
+        f.write(f"{sc}\n\n{cut_list(patterns, cfg)}\n")
+    print(f"NEW CHAMPION: saved {path} and {txt}")
 
 
 if __name__ == "__main__":

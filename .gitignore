@@ -8,3 +8,8 @@ __pycache__/
 # CAD source models (large binaries; keep them outside the repo)
 *.step
 *.stp
+
+# solver output: keep only the current champion layout
+out/*
+!out/best.pkl
+!out/best_cutlist.txt

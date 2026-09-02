@@ -14,7 +14,7 @@ def kerf_cliff(demand: list[PartType], cfg: CutConfig, threshold_units: int = 8)
     the rip kerf is spent. Shaving a sixteenth off such a part doubles its strips per
     sheet, so these are worth surfacing: they are usually free changes in cabinet work.
     """
-    cap = cfg.usable_w + cfg.kerf_rip
+    cap = cfg.usable_w + cfg.kerf_track_saw
     widths: Counter = Counter()
     for pt in demand:
         for w, l in pt.variants():
@@ -23,10 +23,10 @@ def kerf_cliff(demand: list[PartType], cfg: CutConfig, threshold_units: int = 8)
 
     out = []
     for w, qty in widths.items():
-        k = cap // (w + cfg.kerf_rip)
+        k = cap // (w + cfg.kerf_track_saw)
         if k < 1:
             continue
-        target = cap / (k + 1) - cfg.kerf_rip     # width needed for one more strip
+        target = cap / (k + 1) - cfg.kerf_track_saw     # width needed for one more strip
         delta = w - target
         if 0 < delta <= threshold_units:
             out.append({
@@ -71,7 +71,7 @@ def cut_list(patterns: list[Pattern], cfg: CutConfig, limit: int | None = None) 
             groups.setdefault(s.width, []).append(s)
         for w in sorted(groups, reverse=True):
             reuse = " (stop already set)" if w == current_stop else ""
-            saw = "mitre" if w <= cfg.max_crosscut_width else "TRACK SAW (too wide for mitre)"
+            saw = "mitre" if w <= cfg.mitre_max_crosscut_width else "TRACK SAW (too wide for mitre)"
             lines.append(f'  RIP {len(groups[w])} strip(s) @ {fmt(w)}{reuse}'
                          f'   -> crosscut on {saw}')
             current_stop = w

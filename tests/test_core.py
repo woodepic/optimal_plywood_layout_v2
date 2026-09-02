@@ -57,7 +57,7 @@ def _strip(cfg, width_in, parts):
     for pt, w_in, l_in in parts:
         s.placements.append(Placement(part=pt, length=to_units(l_in),
                                       width=to_units(w_in), offset=off))
-        off += to_units(l_in) + cfg.kerf_cross
+        off += to_units(l_in) + cfg.kerf_mitre_saw
     return s
 
 
@@ -166,11 +166,70 @@ def test_cost_arithmetic():
     check(c["n_trims"] == 0, "expected no trims")
 
     sc = score([p], cfg)
-    # material 60; labour = 2 rips*1 + 1 stop*4 + 6 wide crosscuts*1 = 12 min = $15
+    # hand-computed under the current weights:
+    #   2 rips x 1.0                        =  2.0
+    #   1 track stop change x 4.0           =  4.0
+    #   6 track-saw crosscuts x 5.0         = 30.0   (23.5in strip > 14in mitre limit)
+    #   0 mitre cuts, 0 mitre stops         =  0.0
+    #   1 sheet setup x 5.0                 =  5.0
+    #   2 strips x 1.0 handling             =  2.0
+    #   0 saw changeovers (track saw only)  =  0.0
+    #                                        ------
+    #                                         43.0 min
     check(abs(sc.material - 60.0) < 1e-6, f"material {sc.material}")
-    check(abs(sc.minutes - 12.0) < 1e-6, f"minutes {sc.minutes}, expected 12")
-    check(abs(sc.dollars - 75.0) < 1e-6, f"dollars {sc.dollars}, expected 75")
+    check(abs(sc.minutes - 43.0) < 1e-6, f"minutes {sc.minutes}, expected 43")
+    check(abs(sc.dollars - (60.0 + 43.0 * 1.25)) < 1e-6,
+          f"dollars {sc.dollars}, expected 113.75")
     check(sc.n_track_stops == 1, f"stops {sc.n_track_stops}")
+    check(sc.n_saw_changeovers == 0,
+          f"expected 0 changeovers on a track-saw-only sheet, got {sc.n_saw_changeovers}")
+
+
+def test_saw_changeovers():
+    """A sheet needing both saws costs a changeover; a track-only sheet does not."""
+    cfg = CutConfig()
+    # narrow strip -> mitre saw; wide strip -> track saw. Both on one sheet.
+    narrow = _mk(10, 20, qty=2)
+    wide = _mk(30, 20, qty=1)
+    p = Pattern(thickness=0.5,
+                strips=[_strip(cfg, 30, [(wide, 30, 20)]),
+                        _strip(cfg, 10, [(narrow, 10, 20)] * 2)])
+    check_pattern(p, cfg)
+    check(p.saw_stations(cfg) == ["track", "mitre"],
+          f"expected track then mitre, got {p.saw_stations(cfg)}")
+    check(score([p], cfg).n_saw_changeovers == 1,
+          "expected 1 changeover on a mixed sheet")
+
+    # two such sheets chain: track,mitre,track,mitre -> 3 changeovers
+    check(score([p, p], cfg).n_saw_changeovers == 3,
+          f"expected 3 changeovers over two mixed sheets, "
+          f"got {score([p, p], cfg).n_saw_changeovers}")
+
+    # a trim sends you back to the track saw after the mitre work
+    s_trim = Strip(width=to_units(10))
+    s_trim.placements.append(Placement(part=narrow, length=to_units(20),
+                                       width=to_units(10), offset=0))
+    s_trim.placements.append(Placement(part=_mk(8, 20), length=to_units(20),
+                                       width=to_units(8),
+                                       offset=to_units(20) + cfg.kerf_mitre_saw))
+    p2 = Pattern(thickness=0.5, strips=[s_trim])
+    check_pattern(p2, cfg)
+    check(p2.saw_stations(cfg) == ["track", "mitre", "track"],
+          f"expected track,mitre,track with a trim, got {p2.saw_stations(cfg)}")
+
+
+def test_mitre_stops_are_per_sheet():
+    """One stop setting serves every part of that length across all a sheet's strips."""
+    cfg = CutConfig()
+    pt = _mk(10, 20, qty=4)
+    # two narrow strips, both holding two 20in parts: one length, so one stop setting
+    p = Pattern(thickness=0.5,
+                strips=[_strip(cfg, 10, [(pt, 10, 20)] * 2),
+                        _strip(cfg, 10, [(pt, 10, 20)] * 2)])
+    check_pattern(p, cfg)
+    c = p.counts(cfg)
+    check(c["mitre_stops"] == 1,
+          f"expected 1 mitre stop for one repeated length, got {c['mitre_stops']}")
 
 
 def test_stop_carryover():

@@ -22,12 +22,12 @@ print(f"layout: {base.n_sheets} sheets, {base.n_rips} rips, "
       f"{base.n_wide_cross} track-saw crosscuts, {base.n_trims} trims\n")
 
 SWEEPS = [
-    ("t_wide_cross", "track-saw crosscut (min)", [0.5, 1.0, 2.0, 3.0, 5.0]),
-    ("t_track_stop", "extra min to move the track stop", [0.0, 2.0, 4.0, 8.0]),
-    ("t_cross", "mitre saw cut (min)", [0.25, 0.5, 1.0]),
-    ("t_trim", "trim rip (min)", [1.0, 3.0, 5.0]),
-    ("value_of_time", "$/hour", [0.0, 40.0, 75.0, 150.0]),
-    ("t_sheet_handling", "min to set up a sheet", [0.0, 5.0, 10.0]),
+    ("min_per_track_crosscut", "track-saw crosscut (min)", [0.5, 1.0, 2.0, 3.0, 5.0]),
+    ("extra_min_per_track_stop_change", "extra min to move the track stop", [0.0, 2.0, 4.0, 8.0]),
+    ("min_per_mitre_crosscut", "mitre saw cut (min)", [0.25, 0.5, 1.0]),
+    ("min_per_trim_rip", "trim rip (min)", [1.0, 3.0, 5.0]),
+    ("labour_dollars_per_hour", "$/hour", [0.0, 40.0, 75.0, 150.0]),
+    ("min_per_sheet_setup", "min to set up a sheet", [0.0, 5.0, 10.0]),
 ]
 
 for field, label, values in SWEEPS:
