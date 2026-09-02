@@ -131,6 +131,39 @@ gitignored.
 - **`validate.py`** — independent geometry checker. Kerf and DP off-by-one bugs are
   silent, so nothing is scored until it passes.
 
+## Where the search budget belongs (measured)
+
+`experiment.py` holds `restarts x improve-iterations` constant and slides the split.
+Restarts are diversification (independent constructions from different random parameter
+draws); improve iterations are intensification (local search inside whichever basin the
+construction found). At a 6000-unit budget:
+
+| restarts | improve | secs | best | median |
+|---|---|---|---|---|
+| 300 | 20 | 311 | $2,266 | $2,372 |
+| 150 | 40 | 205 | $2,242 | $2,358 |
+| 75 | 80 | 144 | $2,251 | $2,332 |
+| 38 | 160 | 116 | $2,234 | $2,303 |
+| 19 | 320 | 122 | $2,218 | $2,276 |
+| 10 | 600 | 99 | **$2,218** | $2,282 |
+
+Depth beats breadth, and by more than the table suggests: fitting wall time to
+`a*restarts + b*restarts*iters` gives **a = 0.73 s per construction and b = 0.0153 s per
+improve iteration**, so one construction costs about as many seconds as 48 local-search
+iterations. The 10x600 split reached the best score in a third the time of 300x20.
+
+**But that advantage does not survive to large budgets.** At roughly 900-1000 s,
+`160 x 320` scored $2,203.75 and `40 x 1200` scored $2,208.12 — a 0.2% spread, i.e.
+noise. Both allocations saturate at about $2,205.
+
+The best-of-k curve says the same about restarts alone: expected best is $2,381 at k=1,
+$2,281 at k=100, $2,266 at k=300 — $15 for tripling the compute.
+
+So neither knob breaks the plateau. Roughly 100-120 s of search gets within 0.6% of what
+10x that budget achieves, which is why the defaults are `-n 24 --improve 500`. The
+ceiling is set by the construction heuristic and the local-search move set, not by how
+long either runs.
+
 ## Design advice (`advise.py`)
 
 The optimizer takes parts as given; `advise.py` asks which parts are awkward and how
