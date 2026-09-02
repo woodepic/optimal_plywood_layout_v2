@@ -2,19 +2,15 @@
 from __future__ import annotations
 
 import argparse
-import random
+import os
 import time
 
 from src.bounds import floor_report
 from src.cost import score
-from src.heuristic import solve
-from src.improve import improve
-from src.model import GRID, CutConfig, load_config
+from src.search import search
+from src.model import CutConfig, load_config, to_units
 from src.parts import apply_shave, area_bound, load_demand, summarise
 from src.validate import LayoutError, check_job
-
-MERGE_TOLS = [0, GRID // 8, GRID // 4, GRID // 2, GRID]   # 0, 1/8, 1/4, 1/2, 1 inch
-
 
 def main():
     ap = argparse.ArgumentParser()
@@ -25,6 +21,8 @@ def main():
     ap.add_argument("--out", default="out/best.pkl")
     ap.add_argument("--shave", type=float, default=0.0, help="what-if: shave up to X inches off near-miss widths")
     ap.add_argument("--config", default="config.json", help="cost model JSON; omit to use built-in defaults")
+    ap.add_argument("-w", "--workers", type=int, default=None,
+                    help="parallel restarts; default all cores, 1 for in-process")
     ap.add_argument("--no-trim", action="store_true", help="exact 2-stage only")
     args = ap.parse_args()
 
@@ -40,7 +38,6 @@ def main():
         cfg = dataclasses.replace(cfg, allow_trim=False)
     demand = load_demand(args.step, cfg)
     if args.shave > 0:
-        from src.model import to_units
         demand = apply_shave(demand, cfg, to_units(args.shave))
         print(f"WHAT-IF: shaved up to {args.shave}\" off near-miss widths")
     print(summarise(demand, cfg))
@@ -51,41 +48,31 @@ def main():
                                      for t, v in sorted(bounds.items(), reverse=True)))
     print(f"integer lower bound (per-thickness, kerf ignored): {int_bound} sheets\n")
 
-    best = None
-    best_score = None
+    best_r, all_r = None, []
     t0 = time.time()
-    fails = 0
-    hist = []
 
-    for i in range(args.restarts):
-        rng = random.Random(args.seed * 100003 + i)
-        kw = dict(
-            jitter=rng.choice([0.0, 0.0, 0.01, 0.03, 0.06]),
-            trim_weight=rng.choice([0.25, 0.5, 1.0, 2.0, 5.0]) if cfg.allow_trim
-            else 1e6,
-        )
-        imp_kw = dict(temp0=rng.choice([0.0, 5.0, 15.0]),
-                      ruin_frac=rng.choice([0.2, 0.3, 0.45]))
-        try:
-            pats = solve(demand, cfg, rng, **kw)
-            check_job(pats, demand, cfg)
-            pats, sc = improve(demand=demand, patterns=pats, cfg=cfg, rng=rng,
-                               iters=args.improve, **imp_kw, **kw)
-            check_job(pats, demand, cfg)
-        except LayoutError as e:
-            fails += 1
-            if fails <= 3:
-                print(f"  restart {i} invalid: {e}")
-            continue
-        hist.append(sc.dollars)
-        if best_score is None or sc.dollars < best_score.dollars:
-            best, best_score, best_kw = pats, sc, {**kw, **imp_kw}
-            print(f"  [{i:4d}] {sc}")
+    def note(r):
+        nonlocal best_r
+        if r.patterns is not None and (best_r is None or r.dollars < best_r.dollars):
+            best_r = r
+            print(f"  [{r.index:4d}] {score(r.patterns, cfg)}")
+
+    best_r, all_r = search(demand, cfg, args.restarts, args.improve,
+                           base_seed=args.seed, workers=args.workers,
+                           on_result=note)
+    best, best_score, best_kw = best_r.patterns, score(best_r.patterns, cfg), best_r.params
+    check_job(best, demand, cfg)
 
     dt = time.time() - t0
-    print(f"\n{args.restarts} restarts in {dt:.1f}s ({fails} invalid)")
+    fails = sum(1 for r in all_r if r.patterns is None)
+    for r in all_r[:3]:
+        if r.error:
+            print(f"  restart {r.index} invalid: {r.error}")
+    nw = args.workers or min(os.cpu_count() or 1, args.restarts)
+    print(f"\n{args.restarts} restarts x {args.improve} iters in {dt:.1f}s "
+          f"on {nw} worker(s) ({fails} invalid)")
+    hist = sorted(r.dollars for r in all_r if r.patterns is not None)
     if hist:
-        hist.sort()
         print(f"score spread: best ${hist[0]:,.0f}  median ${hist[len(hist)//2]:,.0f}  "
               f"worst ${hist[-1]:,.0f}")
 

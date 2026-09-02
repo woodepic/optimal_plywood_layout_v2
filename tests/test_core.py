@@ -8,7 +8,7 @@ sys.path.insert(0, ".")
 from src.cost import score
 from src.knapsack import bounded_knapsack, np_knapsack, split_groups
 from src.model import GRID, CutConfig, PartType, Pattern, Placement, Strip, to_units
-from src.validate import LayoutError, check_pattern
+from src.validate import LayoutError, check_job, check_pattern
 
 FAILS = []
 
@@ -284,6 +284,42 @@ def test_stop_carryover():
     # both sheets use only 23.5in, so the stop is set once for the whole job
     check(sc.n_track_stops == 1,
           f"expected 1 stop setting across two identical sheets, got {sc.n_track_stops}")
+
+
+def _tiny_demand():
+    return [_mk(12, 24, qty=6), _mk(10, 30, qty=4), _mk(6, 18, qty=8),
+            _mk(23, 30, qty=3)]
+
+
+def test_restart_determinism():
+    """Same seed, same layout -- the contract parallelism relies on."""
+    from src.search import draw_params, restart_seed, run_restart
+    import random as _r
+
+    cfg = CutConfig()
+    demand = _tiny_demand()
+    a = run_restart(demand, cfg, 42, 3, iters=25)
+    b = run_restart(demand, cfg, 42, 3, iters=25)
+    check(a.patterns is not None, f"restart failed: {a.error}")
+    check(abs(a.dollars - b.dollars) < 1e-9,
+          f"same seed gave {a.dollars} then {b.dollars}")
+    check(a.params == b.params, "same seed gave different parameters")
+    # a different index must actually explore somewhere else
+    c = run_restart(demand, cfg, 42, 4, iters=25)
+    check(restart_seed(42, 3) != restart_seed(42, 4), "seeds collide across indices")
+
+
+def test_parallel_matches_serial():
+    """Ten workers must find exactly what one worker finds."""
+    from src.search import search
+
+    cfg = CutConfig()
+    demand = _tiny_demand()
+    ser, _ = search(demand, cfg, restarts=6, iters=25, base_seed=5, workers=1)
+    par, _ = search(demand, cfg, restarts=6, iters=25, base_seed=5, workers=4)
+    check(abs(ser.dollars - par.dollars) < 1e-9,
+          f"serial ${ser.dollars:,.2f} vs parallel ${par.dollars:,.2f}")
+    check_job(par.patterns, demand, cfg)
 
 
 if __name__ == "__main__":
