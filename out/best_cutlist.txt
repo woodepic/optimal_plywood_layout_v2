@@ -1,129 +1,132 @@
-$2,203.75  (17 sheets $1,080 + 15.0h $1,124)  rips=54 stops=32 adj=22 cross=128 trims=20
+$2,182.19  (17 sheets $1,080 + 14.7h $1,102)  rips=57 stops=31 adj=26 cross=131 trims=21
 
 
-SHEET 1  0.5" ply   48" x 96"   util 95%   2 rips, 11 crosscuts
-  RIP 1 strip(s) @ 27-11/32"   -> crosscut on TRACK SAW (too wide for mitre)
-      strip: 1x 26-3/32",  3x 22-19/32",  [offcut 1-15/16"]
-  RIP 1 strip(s) @ 12-25/32"   -> crosscut on mitre
-      strip: 2x 23-1/4",  1x 22-1/4",  1x 21-1/4",  [offcut 5-13/16"]
-  RIP 1 strip(s) @ 7-3/4"   -> crosscut on mitre
-      strip: 1x 36-13/16",  2x 24-1/16",  [offcut 10-15/16"]
-
-SHEET 2  0.5" ply   48" x 96"   util 92%   4 rips, 17 crosscuts
-  RIP 1 strip(s) @ 21-11/32"   -> crosscut on TRACK SAW (too wide for mitre)
-      strip: 4x 22-19/32",  [offcut 5-7/16"]
-  RIP 3 strip(s) @ 6-7/8"   -> crosscut on mitre
-      strip: 1x 28",  1x 23-13/16" +trim to 6-17/32",  1x 22-3/4",  [offcut 21-5/16"]
-      strip: 2x 34",  1x 22-3/4",  [offcut 5-1/8"]
-      strip: 2x 35",  1x 22-3/4",  [offcut 3-1/8"]
-  RIP 1 strip(s) @ 5-25/32"   -> crosscut on mitre
-      strip: 3x 23-13/16",  1x 21" +trim to 5-13/32",  [offcut 3-3/8"]
-
-SHEET 3  0.5" ply   48" x 96"   util 90%   3 rips, 11 crosscuts
-  RIP 1 strip(s) @ 34-11/32"   -> crosscut on TRACK SAW (too wide for mitre)
-      strip: 1x 27-1/2" +trim to 30",  3x 22-19/32",  [offcut 0-17/32"]
-  RIP 1 strip(s) @ 6-7/8"   -> crosscut on mitre
-      strip: 1x 27",  3x 22-3/4",  [offcut 0-9/16"]
-  RIP 1 strip(s) @ 4-13/16"   -> crosscut on mitre
-      strip: 1x 29-3/4",  1x 28" +trim to 3-15/16",  1x 27" +trim to 3-15/16",  [offcut 11-1/8"]
-
-SHEET 4  0.5" ply   48" x 96"   util 85%   3 rips, 12 crosscuts
-  RIP 1 strip(s) @ 21-19/32"   -> crosscut on TRACK SAW (too wide for mitre)
-      strip: 4x 23-3/32",  [offcut 3-7/16"]
-  RIP 1 strip(s) @ 13-29/32"   -> crosscut on mitre
-      strip: 1x 24-1/16" +trim to 10-7/32",  1x 24-1/16",  1x 24" +trim to 4",  1x 23-1/8" +trim to 13",  [offcut 0-9/16"]
-  RIP 1 strip(s) @ 12-11/32"   -> crosscut on mitre
-      strip: 1x 23-1/8" +trim to 12",  2x 23-3/32",  1x 22-3/4" +trim to 3-15/16",  [offcut 3-3/4"]
-
-SHEET 5  0.5" ply   48" x 96"   util 79%   5 rips, 19 crosscuts
-  RIP 1 strip(s) @ 12-3/16"   -> crosscut on mitre
-      strip: 1x 29-3/4",  1x 29-3/4" +trim to 7-1/4",  1x 24-1/16" +trim to 8-1/2",  [offcut 12-5/16"]
+SHEET 1  0.5" ply   48" x 96"   util 89%   6 rips, 22 crosscuts
+  RIP 1 strip(s) @ 10-7/32"   -> crosscut on mitre
+      strip: 1x 24-1/16" +trim to 8-1/2",  1x 24-1/16",  1x 22-3/4" +trim to 6-7/8",  1x 21-1/4" +trim to 5-13/32",  [offcut 3-11/16"]
   RIP 1 strip(s) @ 9-27/32"   -> crosscut on mitre
       strip: 2x 23-1/4",  1x 22-1/4",  1x 21-1/4",  [offcut 5-13/16"]
-  RIP 3 strip(s) @ 7-3/8"   -> crosscut on mitre
-      strip: 1x 22-1/4",  3x 21-1/4",  [offcut 9-13/16"]
-      strip: 2x 23-1/4",  2x 22-1/4",  [offcut 4-13/16"]
-      strip: 4x 23-1/4",  [offcut 2-13/16"]
+  RIP 1 strip(s) @ 7-1/4"   -> crosscut on mitre
+      strip: 1x 36-13/16",  1x 29-3/4",  1x 28" +trim to 6-7/8",  [offcut 1-5/16"]
+  RIP 2 strip(s) @ 6-7/8"   -> crosscut on mitre
+      strip: 4x 22-3/4",  [offcut 4-13/16"]
+      strip: 2x 35",  1x 22-3/4",  [offcut 3-1/8"]
+  RIP 1 strip(s) @ 5-25/32"   -> crosscut on mitre
+      strip: 3x 23-13/16",  1x 23-1/4" +trim to 5-13/32",  [offcut 1-1/8"]
 
-SHEET 6  0.5" ply   48" x 96"   util 67%   5 rips, 18 crosscuts
+SHEET 2  0.5" ply   48" x 96"   util 56%   2 rips, 7 crosscuts
+  RIP 1 strip(s) @ 22-19/32"   -> crosscut on TRACK SAW (too wide for mitre)
+      strip: 4x 21-11/32",  [offcut 10-7/16"]
+  RIP 1 strip(s) @ 6-7/8"   -> crosscut on mitre
+      strip: 2x 34",  1x 27",  [offcut 0-7/8"]
+
+SHEET 3  0.5" ply   48" x 96"   util 85%   5 rips, 17 crosscuts
   RIP 1 strip(s) @ 14-1/4"   -> crosscut on TRACK SAW (too wide for mitre)
       strip: 1x 35",  1x 34",  1x 22-3/4",  [offcut 4-1/8"]
+  RIP 1 strip(s) @ 13-29/32"   -> crosscut on mitre
+      strip: 1x 24-1/16",  1x 23-1/8" +trim to 13",  1x 23-1/8" +trim to 12",  [offcut 25-9/16"]
+  RIP 1 strip(s) @ 7-3/4"   -> crosscut on mitre
+      strip: 1x 36-13/16",  2x 24-1/16",  [offcut 10-15/16"]
   RIP 1 strip(s) @ 6-9/32"   -> crosscut on mitre
       strip: 2x 24-1/16",  1x 23-13/16",  1x 14-3/4",  [offcut 9-1/8"]
-  RIP 3 strip(s) @ 5-13/32"   -> crosscut on mitre
-      strip: 2x 21",  [offcut 53-15/16"]
-      strip: 4x 23-1/4",  [offcut 2-13/16"]
-      strip: 3x 22-3/4",  1x 13",  1x 12",  [offcut 2-1/2"]
-
-SHEET 7  0.5" ply   48" x 96"   util 92%   3 rips, 10 crosscuts
-  RIP 1 strip(s) @ 36-13/16"   -> crosscut on TRACK SAW (too wide for mitre)
-      strip: 1x 87-1/2" +trim to 34-3/4",  1x 7-1/4",  [offcut 1-3/16"]
-  RIP 2 strip(s) @ 5-13/32"   -> crosscut on mitre
-      strip: 2x 22",  2x 21",  [offcut 9-13/16"]
-      strip: 1x 22-3/4",  3x 22",  [offcut 7-1/16"]
-
-SHEET 8  0.5" ply   48" x 96"   util 91%   4 rips, 16 crosscuts
-  RIP 1 strip(s) @ 30-3/4"   -> crosscut on TRACK SAW (too wide for mitre)
-      strip: 1x 26-3/32" +trim to 27-11/32",  2x 24",  1x 18-11/32" +trim to 29-3/4",  [offcut 3-3/8"]
-  RIP 3 strip(s) @ 5-13/32"   -> crosscut on mitre
-      strip: 2x 22-1/4",  2x 21-1/4",  [offcut 8-13/16"]
+  RIP 1 strip(s) @ 5-13/32"   -> crosscut on mitre
       strip: 4x 22-3/4",  [offcut 4-13/16"]
-      strip: 2x 23-1/4",  2x 22-3/4",  [offcut 3-13/16"]
 
-SHEET 9  0.5" ply   48" x 96"   util 91%   2 rips, 7 crosscuts
-  RIP 1 strip(s) @ 30-1/4"   -> crosscut on TRACK SAW (too wide for mitre)
-      strip: 1x 37",  1x 30",  1x 24",  1x 3-15/16" +trim to 22-3/4",  [offcut 0-7/8"]
-  RIP 1 strip(s) @ 17-7/32"   -> crosscut on TRACK SAW (too wide for mitre)
-      strip: 1x 27",  2x 26-1/4",  [offcut 16-3/8"]
+SHEET 4  0.5" ply   48" x 96"   util 88%   4 rips, 15 crosscuts
+  RIP 1 strip(s) @ 30"   -> crosscut on TRACK SAW (too wide for mitre)
+      strip: 2x 30-1/4",  1x 27-1/2",  [offcut 7-7/8"]
+  RIP 3 strip(s) @ 5-13/32"   -> crosscut on mitre
+      strip: 1x 21-1/4",  3x 21",  [offcut 11-9/16"]
+      strip: 2x 22-3/4",  2x 21",  [offcut 8-5/16"]
+      strip: 4x 22-3/4",  [offcut 4-13/16"]
 
-SHEET 10  0.5" ply   48" x 96"   util 92%   2 rips, 7 crosscuts
-  RIP 1 strip(s) @ 30-1/4"   -> crosscut on TRACK SAW (too wide for mitre)
-      strip: 1x 30",  2x 24-1/4",  1x 15",  [offcut 2-5/16"]
-  RIP 1 strip(s) @ 17-7/32"   -> crosscut on TRACK SAW (too wide for mitre)
-      strip: 2x 28",  1x 27",  [offcut 12-7/8"]
+SHEET 5  0.5" ply   48" x 96"   util 92%   5 rips, 18 crosscuts
+  RIP 1 strip(s) @ 27-11/32"   -> crosscut on TRACK SAW (too wide for mitre)
+      strip: 1x 26-3/32",  3x 22-19/32",  [offcut 1-15/16"]
+  RIP 3 strip(s) @ 5-13/32"   -> crosscut on mitre
+      strip: 2x 23-1/4",  2x 22-1/4",  [offcut 4-13/16"]
+      strip: 4x 22",  [offcut 7-13/16"]
+      strip: 3x 23-1/4",  1x 22",  [offcut 4-1/16"]
+  RIP 1 strip(s) @ 4"   -> crosscut on mitre
+      strip: 2x 24",  [offcut 47-15/16"]
 
-SHEET 11  0.75" ply   48" x 96"   util 74%   3 rips, 11 crosscuts
-  RIP 1 strip(s) @ 30-1/4"   -> crosscut on TRACK SAW (too wide for mitre)
-      strip: 3x 24",  1x 23-1/2",  [offcut 0-5/16"]
-  RIP 2 strip(s) @ 3"   -> crosscut on mitre
-      strip: 2x 28-1/2",  1x 22-1/2",  [offcut 16-3/8"]
-      strip: 1x 35-1/2",  2x 22-3/4",  1x 13-1/2",  [offcut 1-5/16"]
-
-SHEET 12  0.75" ply   48" x 96"   util 87%   4 rips, 18 crosscuts
-  RIP 1 strip(s) @ 30-1/4"   -> crosscut on TRACK SAW (too wide for mitre)
-      strip: 3x 24",  1x 23-1/2",  [offcut 0-5/16"]
-  RIP 3 strip(s) @ 4"   -> crosscut on mitre
-      strip: 4x 19-1/2",  1x 15",  [offcut 2-3/4"]
-      strip: 3x 24-1/4",  1x 23",  [offcut 0-1/16"]
-      strip: 4x 20",  1x 15",  [offcut 0-3/4"]
-
-SHEET 13  0.75" ply   48" x 96"   util 83%   5 rips, 17 crosscuts
+SHEET 6  0.75" ply   48" x 96"   util 83%   5 rips, 18 crosscuts
   RIP 1 strip(s) @ 30-1/4"   -> crosscut on TRACK SAW (too wide for mitre)
       strip: 2x 27",  1x 23-1/2",  [offcut 18-3/8"]
   RIP 4 strip(s) @ 4"   -> crosscut on mitre
-      strip: 3x 30",  [offcut 5-7/8"]
-      strip: 1x 30",  2x 20",  1x 19-1/2",  [offcut 6-5/16"]
-      strip: 2x 37",  1x 19-1/2",  [offcut 2-3/8"]
-      strip: 1x 24-1/4",  2x 24",  1x 23",  [offcut 0-9/16"]
+      strip: 1x 37",  2x 24",  [offcut 10-7/8"]
+      strip: 3x 24-1/4",  1x 19-1/2",  [offcut 3-9/16"]
+      strip: 1x 37",  3x 19-1/2",  [offcut 0-5/16"]
+      strip: 1x 30",  2x 23",  1x 19-1/2",  [offcut 0-5/16"]
 
-SHEET 14  0.5" ply   48" x 96"   util 92%   2 rips, 8 crosscuts
-  RIP 1 strip(s) @ 24"   -> crosscut on TRACK SAW (too wide for mitre)
-      strip: 1x 37",  1x 30",  1x 24",  1x 4",  [offcut 0-13/16"]
-  RIP 1 strip(s) @ 23-3/32"   -> crosscut on TRACK SAW (too wide for mitre)
-      strip: 3x 21-19/32",  1x 21-11/32" +trim to 22-19/32",  [offcut 9-11/16"]
+SHEET 7  0.75" ply   48" x 96"   util 87%   4 rips, 17 crosscuts
+  RIP 1 strip(s) @ 30-1/4"   -> crosscut on TRACK SAW (too wide for mitre)
+      strip: 3x 24",  1x 23-1/2",  [offcut 0-5/16"]
+  RIP 3 strip(s) @ 4"   -> crosscut on mitre
+      strip: 1x 30",  1x 24-1/4",  2x 20",  [offcut 1-9/16"]
+      strip: 4x 20",  1x 15",  [offcut 0-3/4"]
+      strip: 2x 30",  1x 19-1/2",  1x 15",  [offcut 1-5/16"]
 
-SHEET 15  0.5" ply   48" x 96"   util 58%   3 rips, 8 crosscuts
-  RIP 1 strip(s) @ 22-3/4"   -> crosscut on TRACK SAW (too wide for mitre)
-      strip: 1x 24-1/4" +trim to 14-3/4",  2x 17-7/32",  1x 14-1/4",  [offcut 22-7/8"]
-  RIP 2 strip(s) @ 11-5/16"   -> crosscut on mitre
-      strip: 1x 26-1/4",  [offcut 69-3/4"]
-      strip: 1x 28",  1x 27",  1x 26-1/4",  [offcut 14-5/8"]
+SHEET 8  0.75" ply   48" x 96"   util 74%   3 rips, 11 crosscuts
+  RIP 1 strip(s) @ 30-1/4"   -> crosscut on TRACK SAW (too wide for mitre)
+      strip: 3x 24",  1x 23-1/2",  [offcut 0-5/16"]
+  RIP 2 strip(s) @ 3"   -> crosscut on mitre
+      strip: 1x 35-1/2",  2x 22-3/4",  [offcut 14-7/8"]
+      strip: 2x 28-1/2",  1x 22-1/2",  1x 13-1/2",  [offcut 2-13/16"]
 
-SHEET 16  0.5" ply   48" x 96"   util 81%   2 rips, 7 crosscuts
+SHEET 9  0.5" ply   48" x 96"   util 92%   2 rips, 7 crosscuts
+  RIP 1 strip(s) @ 30-1/4"   -> crosscut on TRACK SAW (too wide for mitre)
+      strip: 1x 37",  1x 24-1/4",  1x 17-7/32" +trim to 28",  1x 15",  [offcut 2-11/32"]
+  RIP 1 strip(s) @ 17-7/32"   -> crosscut on TRACK SAW (too wide for mitre)
+      strip: 1x 36-13/16" +trim to 15-3/8",  2x 26-1/4",  [offcut 6-9/16"]
+
+SHEET 10  0.5" ply   48" x 96"   util 82%   6 rips, 19 crosscuts
+  RIP 1 strip(s) @ 17-7/32" (stop already set)   -> crosscut on TRACK SAW (too wide for mitre)
+      strip: 1x 28",  2x 27",  [offcut 13-7/8"]
+  RIP 3 strip(s) @ 7-3/8"   -> crosscut on mitre
+      strip: 2x 23-1/4",  2x 21-1/4",  [offcut 6-13/16"]
+      strip: 4x 23-1/4",  [offcut 2-13/16"]
+      strip: 3x 22-1/4",  1x 21-1/4",  [offcut 7-13/16"]
+  RIP 2 strip(s) @ 3-15/16"   -> crosscut on mitre
+      strip: 1x 22-3/4",  [offcut 73-1/4"]
+      strip: 1x 28",  1x 27",  1x 22-3/4",  [offcut 18-1/8"]
+
+SHEET 11  0.5" ply   48" x 96"   util 92%   2 rips, 6 crosscuts
+  RIP 1 strip(s) @ 34-3/4"   -> crosscut on TRACK SAW (too wide for mitre)
+      strip: 1x 87-1/2",  [offcut 8-1/2"]
+  RIP 1 strip(s) @ 12-25/32"   -> crosscut on mitre
+      strip: 2x 23-1/4",  1x 22-1/4",  1x 21-1/4",  1x 5-13/32" +trim to 12",  [offcut 0-11/32"]
+
+SHEET 12  0.5" ply   48" x 96"   util 86%   2 rips, 7 crosscuts
+  RIP 1 strip(s) @ 34-11/32"   -> crosscut on TRACK SAW (too wide for mitre)
+      strip: 1x 26-3/32" +trim to 27-11/32",  3x 22-19/32",  [offcut 1-15/16"]
+  RIP 1 strip(s) @ 12-11/32"   -> crosscut on mitre
+      strip: 1x 29-3/4" +trim to 12-3/16",  2x 23-3/32",  [offcut 19-15/16"]
+
+SHEET 13  0.5" ply   48" x 96"   util 78%   2 rips, 8 crosscuts
   RIP 1 strip(s) @ 24-1/2"   -> crosscut on TRACK SAW (too wide for mitre)
-      strip: 1x 29-3/4" +trim to 18-11/32",  2x 24-1/4",  1x 15",  [offcut 2-9/16"]
+      strip: 1x 21-11/32" +trim to 22-19/32",  1x 17-7/32" +trim to 22-3/4",  1x 15",  1x 14-1/4" +trim to 22-3/4",  [offcut 28"]
   RIP 1 strip(s) @ 23-1/4"   -> crosscut on TRACK SAW (too wide for mitre)
-      strip: 1x 36-13/16" +trim to 15-3/8",  2x 23-1/8",  [offcut 12-13/16"]
+      strip: 1x 29-3/4" +trim to 18-11/32",  2x 23-1/8",  1x 17-7/32" +trim to 22-3/4",  [offcut 2-19/32"]
+
+SHEET 14  0.5" ply   48" x 96"   util 94%   2 rips, 8 crosscuts
+  RIP 1 strip(s) @ 24-1/4"   -> crosscut on TRACK SAW (too wide for mitre)
+      strip: 1x 30-1/4",  2x 24-1/2",  1x 14-3/4",  [offcut 1-13/16"]
+  RIP 1 strip(s) @ 23-3/32"   -> crosscut on TRACK SAW (too wide for mitre)
+      strip: 1x 29-3/4" +trim to 18-11/32",  3x 21-19/32",  [offcut 1-9/32"]
+
+SHEET 15  0.5" ply   48" x 96"   util 91%   2 rips, 7 crosscuts
+  RIP 1 strip(s) @ 24"   -> crosscut on TRACK SAW (too wide for mitre)
+      strip: 1x 37",  1x 30",  1x 24",  [offcut 4-7/8"]
+  RIP 1 strip(s) @ 23-3/32"   -> crosscut on TRACK SAW (too wide for mitre)
+      strip: 4x 21-19/32",  [offcut 9-7/16"]
+
+SHEET 16  0.5" ply   48" x 96"   util 82%   3 rips, 10 crosscuts
+  RIP 1 strip(s) @ 24"   -> crosscut on TRACK SAW (too wide for mitre)
+      strip: 2x 30-3/4",  1x 30-1/4",  [offcut 4-1/8"]
+  RIP 2 strip(s) @ 11-5/16"   -> crosscut on mitre
+      strip: 1x 29-3/4" +trim to 4-13/16",  1x 27",  1x 23-13/16" +trim to 6-17/32",  [offcut 15-5/16"]
+      strip: 1x 28",  2x 26-1/4",  1x 13" +trim to 5-13/32",  [offcut 2-5/16"]
 
 SHEET 17  0.75" ply   48" x 96"   util 64%   2 rips, 4 crosscuts
   RIP 2 strip(s) @ 23-1/2"   -> crosscut on TRACK SAW (too wide for mitre)

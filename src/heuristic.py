@@ -95,7 +95,8 @@ def _fill_strip(width: int, cands: list[tuple], remaining: Counter, cfg: CutConf
 
 def _build_strips(types: list[PartType], cfg: CutConfig, rng: random.Random,
                   jitter: float, trim_weight: float,
-                  qty: dict[PartType, int] | None = None) -> list[Strip]:
+                  qty: dict[PartType, int] | None = None,
+                  max_strip_width: int | None = None) -> list[Strip]:
     cands = _variants(types, cfg)
     remaining = Counter(qty if qty is not None else {pt: pt.qty for pt in types})
     thickness = types[0].thickness
@@ -106,6 +107,12 @@ def _build_strips(types: list[PartType], cfg: CutConfig, rng: random.Random,
     strips: list[Strip] = []
     while sum(remaining.values()) > 0:
         widths = sorted({w for pt, w, l in cands if remaining[pt] > 0}, reverse=True)
+        if max_strip_width is not None:
+            # Cap strip width so crosscuts stay on the cheap saw. Parts whose smaller
+            # dimension exceeds the cap cannot obey it, so once the capped widths are
+            # exhausted the cap is lifted for whatever is left.
+            capped = [w for w in widths if w <= max_strip_width]
+            widths = capped or widths
         best = None
         for width in widths:
             # trim cost converted to strip-length units at this width
@@ -134,7 +141,11 @@ def _build_strips(types: list[PartType], cfg: CutConfig, rng: random.Random,
             if best is None or density > best[0]:
                 best = (density, shrunk, placements)
         if best is None:
-            break
+            # Nothing could be placed while parts remain. Fail loudly: silently
+            # returning a short layout produces something that scores *better* for
+            # having less to cut, and only the validator would catch it.
+            left = {pt.label: n for pt, n in remaining.items() if n > 0}
+            raise ValueError(f"could not place remaining parts: {left}")
         _, shrunk, placements = best
         strips.append(Strip(width=shrunk, placements=placements))
         for p in placements:
@@ -208,8 +219,9 @@ def _pack_sheets(strips: list[Strip], thickness: float, cfg: CutConfig,
 
 def solve_thickness(types: list[PartType], cfg: CutConfig, rng: random.Random,
                     jitter: float = 0.0, trim_weight: float = 1.0,
-                    qty: dict[PartType, int] | None = None) -> list[Pattern]:
-    strips = _build_strips(types, cfg, rng, jitter, trim_weight, qty)
+                    qty: dict[PartType, int] | None = None,
+                    max_strip_width: int | None = None) -> list[Pattern]:
+    strips = _build_strips(types, cfg, rng, jitter, trim_weight, qty, max_strip_width)
     return _pack_sheets(strips, types[0].thickness, cfg, rng)
 
 

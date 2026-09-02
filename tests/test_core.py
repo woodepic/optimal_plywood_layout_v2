@@ -322,6 +322,94 @@ def test_parallel_matches_serial():
     check_job(par.patterns, demand, cfg)
 
 
+def _loose_layout(cfg):
+    """Three sheets, each with three barely-used strips.
+
+    Deliberately slack so that every move has something to do -- a tightly packed
+    layout starves merge/migrate/drain and the reachability check becomes vacuous.
+    """
+    types = [_mk(8, 20, qty=3), _mk(6, 15, qty=3), _mk(10, 30, qty=3)]
+    pats = []
+    for _ in range(3):
+        pats.append(Pattern(thickness=0.5, strips=[
+            _strip(cfg, 8, [(types[0], 8, 20)]),
+            _strip(cfg, 6, [(types[1], 6, 15)]),
+            _strip(cfg, 10, [(types[2], 10, 30)]),
+        ]))
+    return types, pats
+
+
+def test_every_move_conserves_parts():
+    """Each move must preserve the exact multiset of parts and stay cuttable.
+
+    A move that drops or duplicates a part is the worst class of bug here: the layout
+    still scores, and it scores *better* for having less to cut.
+    """
+    from collections import Counter as _C
+    import random as _r
+
+    from src.improve import MOVES
+
+    cfg = CutConfig()
+    demand, base = _loose_layout(cfg)
+    check_job(base, demand, cfg)
+
+    def census(pats):
+        c = _C()
+        for p in pats:
+            for pt, n in p.part_counts().items():
+                c[pt] += n
+        return c
+
+    want = census(base)
+    by_t = {0.5: demand}
+
+    for name, _, fn in MOVES:
+        applied = 0
+        for trial in range(60):
+            rng = _r.Random(1000 + trial)
+            try:
+                cand = fn(base, cfg, rng, by_t=by_t, ruin_frac=0.5, solve_kw={})
+            except (LayoutError, ValueError) as e:
+                check(False, f"{name} raised {e}")
+                continue
+            if cand is None:
+                continue
+            applied += 1
+            got = census(cand)
+            if got != want:
+                bad = {pt.label: (want[pt], got.get(pt, 0))
+                       for pt in set(want) | set(got) if want.get(pt, 0) != got.get(pt, 0)}
+                check(False, f"{name} changed the part census: {bad}")
+                break
+            try:
+                check_job(cand, demand, cfg)
+            except LayoutError as e:
+                check(False, f"{name} produced an uncuttable layout: {e}")
+                break
+            if census(base) != want:
+                check(False, f"{name} mutated its input")
+                break
+        check(applied > 0, f"{name} never applied in 60 tries -- is it reachable?")
+
+
+def test_moves_can_delete_a_sheet():
+    """migrate_strip plus compaction must be able to remove a sheet entirely."""
+    from src.improve import migrate_strip
+    import random as _r
+
+    cfg = CutConfig()
+    pt = _mk(10, 20, qty=3)
+    # three 10in strips spread over two sheets; all three fit on one
+    a = Pattern(thickness=0.5, strips=[_strip(cfg, 10, [(pt, 10, 20)]),
+                                       _strip(cfg, 10, [(pt, 10, 20)])])
+    b = Pattern(thickness=0.5, strips=[_strip(cfg, 10, [(pt, 10, 20)])])
+    out = migrate_strip([a, b], cfg, _r.Random(0))
+    check(out is not None, "migrate_strip found nothing to do")
+    check(len(out) == 1, f"expected the second sheet to disappear, got {len(out)} sheets")
+    check(sum(len(p.strips) for p in out) == 3, "lost a strip while migrating")
+
+
 if __name__ == "__main__":
     for name, fn in sorted(globals().items()):
         if name.startswith("test_") and callable(fn):
