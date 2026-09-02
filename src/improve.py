@@ -303,13 +303,28 @@ def _release(patterns, cfg, rng, thickness, frac):
     return others, kept, released
 
 
+def _pick_thickness(patterns, by_t, rng):
+    """Choose a thickness group in proportion to how many sheets it has.
+
+    Uniform choice wasted effort: a 4-sheet group was ruined as often as a 13-sheet
+    one despite having a fraction of the opportunity.
+    """
+    counts = {t: sum(1 for p in patterns if abs(p.thickness - t) < 1e-9) for t in by_t}
+    live = [t for t, n in counts.items() if n >= 2]
+    if not live:
+        return None
+    return rng.choices(live, weights=[counts[t] for t in live], k=1)[0]
+
+
 def ruin_recreate(patterns, cfg, rng, by_t=None, ruin_frac=0.3, solve_kw=None, **_):
     """Release the worst sheets of one thickness and rebuild them together.
 
     Fixes the construction's end-game, where the parts that pack well are consumed
     first and low-quantity leftovers each land alone in a barely-filled strip.
     """
-    thickness = rng.choice(list(by_t))
+    thickness = _pick_thickness(patterns, by_t, rng)
+    if thickness is None:
+        return None
     got = _release(patterns, cfg, rng, thickness, ruin_frac)
     if got is None:
         return None
@@ -329,7 +344,9 @@ def rebuild_narrow(patterns, cfg, rng, by_t=None, solve_kw=None, **_):
     smaller dimension exceeds the cap are exempt; the cap lifts once capped widths run
     out.
     """
-    thickness = rng.choice(list(by_t))
+    thickness = _pick_thickness(patterns, by_t, rng)
+    if thickness is None:
+        return None
     got = _release(patterns, cfg, rng, thickness, rng.choice([0.4, 0.6, 1.0]))
     if got is None:
         return None

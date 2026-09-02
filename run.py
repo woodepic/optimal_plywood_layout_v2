@@ -8,7 +8,7 @@ import time
 from src.bounds import floor_report
 from src.cost import score
 from src.search import search
-from src.model import CutConfig, load_config, to_units
+from src.model import CutConfig, config_to_dict, load_config, to_units
 from src.parts import apply_shave, area_bound, load_demand, summarise
 from src.validate import LayoutError, check_job
 
@@ -154,6 +154,13 @@ def save_if_better(patterns, sc, demand, cfg, path):
                           f"({e}); leaving it untouched. Re-run without --no-trim to "
                           f"replace it.")
                     return
+                stored = prev.get("cfg_fields")
+                if stored is not None and stored != config_to_dict(cfg):
+                    changed = [k for k in set(stored) | set(config_to_dict(cfg))
+                               if stored.get(k) != config_to_dict(cfg).get(k)]
+                    print(f"\nnote: stored champion was found under different "
+                          f"weights ({', '.join(sorted(changed))}); it is re-scored "
+                          f"under the current ones below")
                 print(f"\nstored champion re-scored under current weights: "
                       f"${prev_sc.dollars:,.2f}  (this run: ${sc.dollars:,.2f})")
                 if prev_sc.dollars <= sc.dollars:
@@ -161,7 +168,11 @@ def save_if_better(patterns, sc, demand, cfg, path):
                     return
 
     with open(path, "wb") as f:
-        pickle.dump({"patterns": patterns, "cfg": cfg, "demand": demand}, f)
+        # Store the config as a plain dict as well. A pickled frozen dataclass whose
+        # fields have since been renamed silently falls back to class defaults on
+        # load, which reads as agreement when it is really amnesia.
+        pickle.dump({"patterns": patterns, "cfg": cfg,
+                     "cfg_fields": config_to_dict(cfg), "demand": demand}, f)
     txt = path.rsplit(".", 1)[0] + "_cutlist.txt"
     with open(txt, "w") as f:
         f.write(f"{sc}\n\n{cut_list(patterns, cfg)}\n")

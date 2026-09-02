@@ -42,7 +42,8 @@ def _variants(types: list[PartType], cfg: CutConfig) -> list[tuple]:
 
 
 def _fill_strip(width: int, cands: list[tuple], remaining: Counter, cfg: CutConfig,
-                rng: random.Random, jitter: float, trim_units: float = 0.0):
+                rng: random.Random, jitter: float, trim_units: float = 0.0,
+                fill_mode: bool = False):
     """Knapsack-fill one strip of the given width. Returns (placements, used_length)."""
     elig = [(i, pt, w, l) for i, (pt, w, l) in enumerate(cands)
             if w <= width and remaining[pt] > 0]
@@ -63,9 +64,18 @@ def _fill_strip(width: int, cands: list[tuple], remaining: Counter, cfg: CutConf
     items = []
     for _, pt, w, l in elig:
         size = l + cfg.kerf_mitre_saw
-        val = l * (w / width) + cfg.kerf_mitre_saw
-        if w < width:
-            val -= trim_units
+        if fill_mode:
+            # Maximise raw length consumed instead of useful area. This is the only
+            # way to land on an EXACTLY filled strip, and an exactly filled strip
+            # needs one fewer crosscut: the last part's far end is the sheet's own
+            # factory edge, already square. Worth a whole track-saw cut on a wide
+            # strip, so it is tried alongside the area-optimal fill and the better of
+            # the two wins on true density.
+            val = float(size)
+        else:
+            val = l * (w / width) + cfg.kerf_mitre_saw
+            if w < width:
+                val -= trim_units
         if jitter:
             val *= 1.0 + rng.uniform(-jitter, jitter)
         items.append((size, max(val, 1e-6), remaining[pt]))
@@ -93,6 +103,48 @@ def _fill_strip(width: int, cands: list[tuple], remaining: Counter, cfg: CutConf
     return placements, offset - cfg.kerf_mitre_saw
 
 
+def _strip_value(placements, width: int, cfg: CutConfig, thickness: float,
+                 dollars_per_area: float, trim_cost: float, stop_cost: float,
+                 used_widths: set[int]) -> tuple[float, int]:
+    """Score one candidate strip in dollars per unit of sheet area it consumes.
+
+    A strip occupies `shrunk x usable_l` of sheet whether or not it is well filled, so
+    density is the right basis for comparing a narrow well-packed strip against a wide
+    half-empty one.
+    """
+    shrunk = max(p.width for p in placements)          # normal patterns
+    part_area = sum(p.width * p.length for p in placements)
+    trims = sum(1 for p in placements if p.width < shrunk)
+
+    # Every part needs a crosscut wherever it sits, so the full cut cost is not a
+    # differential: only the *excess* from being forced onto the track saw
+    # distinguishes one strip choice from another.
+    wide = shrunk > cfg.mitre_max_crosscut_width
+    per_cut = cfg.min_per_track_crosscut if wide else cfg.min_per_mitre_crosscut
+    excess = max(0.0, cfg.min_per_track_crosscut - cfg.min_per_mitre_crosscut) \
+        if wide else 0.0
+    cut_cost = len(placements) * excess * cfg.dollars_per_min()
+
+    # An exactly filled strip needs one crosscut fewer, because the last part's far
+    # end is the sheet's own factory edge. On a wide strip that is a whole track-saw
+    # cut -- the single largest per-operation cost in the model.
+    used = sum(p.length for p in placements) + \
+        (len(placements) - 1) * cfg.kerf_mitre_saw
+    if used == cfg.usable_l:
+        cut_cost -= per_cut * cfg.dollars_per_min()
+
+    rip_cost = (cfg.min_per_track_rip + cfg.min_per_strip_handling) \
+        * cfg.dollars_per_min()
+    # Opening a width not yet used in this job costs a track saw stop setting.
+    # Charging it here is what makes construction prefer widths it already has, which
+    # cuts stop changes and, because reused widths absorb more parts, strip count too.
+    if shrunk not in used_widths:
+        rip_cost += stop_cost
+
+    value = (part_area * dollars_per_area - trims * trim_cost - cut_cost - rip_cost)
+    return value / (shrunk * cfg.usable_l), shrunk
+
+
 def _build_strips(types: list[PartType], cfg: CutConfig, rng: random.Random,
                   jitter: float, trim_weight: float,
                   qty: dict[PartType, int] | None = None,
@@ -102,9 +154,13 @@ def _build_strips(types: list[PartType], cfg: CutConfig, rng: random.Random,
     thickness = types[0].thickness
     sheet_area = cfg.usable_w * cfg.usable_l
     dollars_per_area = cfg.cost_of_sheet(thickness) / sheet_area
-    trim_cost = (cfg.min_per_trim_rip + cfg.extra_min_per_trim_stop_change * 0.25) * cfg.dollars_per_min() * trim_weight
+    trim_cost = (cfg.min_per_trim_rip + cfg.extra_min_per_trim_stop_change * 0.25) \
+        * cfg.dollars_per_min() * trim_weight
+    stop_cost = (cfg.min_per_track_rip + cfg.extra_min_per_track_stop_change) \
+        * cfg.dollars_per_min()
 
     strips: list[Strip] = []
+    used_widths: set[int] = set()
     while sum(remaining.values()) > 0:
         widths = sorted({w for pt, w, l in cands if remaining[pt] > 0}, reverse=True)
         if max_strip_width is not None:
@@ -113,41 +169,35 @@ def _build_strips(types: list[PartType], cfg: CutConfig, rng: random.Random,
             # exhausted the cap is lifted for whatever is left.
             capped = [w for w in widths if w <= max_strip_width]
             widths = capped or widths
+
         best = None
         for width in widths:
             # trim cost converted to strip-length units at this width
             tu = trim_cost / (cfg.cost_of_sheet(thickness) * width / sheet_area)
-            got = _fill_strip(width, cands, remaining, cfg, rng, jitter, tu)
-            if got is None:
-                continue
-            placements, _ = got
-            shrunk = max(p.width for p in placements)      # normal patterns
-            part_area = sum(p.width * p.length for p in placements)
-            trims = sum(1 for p in placements if p.width < shrunk)
-            # A strip wider than the mitre saw's capacity sends every one of its
-            # crosscuts to the track saw, which costs far more per cut. That gap is
-            # large enough to outweigh material, so strip choice has to see it.
-            # Every part needs a crosscut wherever it sits, so the full cut cost is
-            # not a differential: only the *excess* from being forced onto the track
-            # saw distinguishes one strip choice from another.
-            excess = max(0.0, cfg.min_per_track_crosscut - cfg.min_per_mitre_crosscut) \
-                if shrunk > cfg.mitre_max_crosscut_width else 0.0
-            cut_cost = len(placements) * excess * cfg.dollars_per_min()
-            rip_cost = (cfg.min_per_track_rip + cfg.min_per_strip_handling) \
-                * cfg.dollars_per_min()
-            value = (part_area * dollars_per_area - trims * trim_cost
-                     - cut_cost - rip_cost)
-            density = value / (shrunk * cfg.usable_l)
-            if best is None or density > best[0]:
-                best = (density, shrunk, placements)
+            # Two fills per width: one maximising useful area, one maximising raw
+            # length. Only the latter can land on an exactly filled strip.
+            for fill_mode in (False, True):
+                got = _fill_strip(width, cands, remaining, cfg, rng, jitter, tu,
+                                  fill_mode)
+                if got is None:
+                    continue
+                placements, _ = got
+                density, shrunk = _strip_value(
+                    placements, width, cfg, thickness, dollars_per_area, trim_cost,
+                    stop_cost, used_widths)
+                if best is None or density > best[0]:
+                    best = (density, shrunk, placements)
+
         if best is None:
             # Nothing could be placed while parts remain. Fail loudly: silently
             # returning a short layout produces something that scores *better* for
             # having less to cut, and only the validator would catch it.
             left = {pt.label: n for pt, n in remaining.items() if n > 0}
             raise ValueError(f"could not place remaining parts: {left}")
+
         _, shrunk, placements = best
         strips.append(Strip(width=shrunk, placements=placements))
+        used_widths.add(shrunk)
         for p in placements:
             remaining[p.part] -= 1
     return strips
