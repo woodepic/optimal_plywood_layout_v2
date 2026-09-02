@@ -1,0 +1,10 @@
+# virtualenv
+.venv/
+
+# python
+__pycache__/
+*.py[cod]
+
+# CAD source models (large binaries; keep them outside the repo)
+*.step
+*.stp

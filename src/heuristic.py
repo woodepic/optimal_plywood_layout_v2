@@ -1,0 +1,212 @@
+"""Heuristic solver: greedy strip formation by area density, then bin-packing of strips.
+
+Two levels, as in the plan, but the levels are no longer solved in isolation — that
+independence was what cost 25% of the sheet.
+
+Strip formation: at each step every candidate strip width is costed (a knapsack fills a
+strip of that width from the eligible remaining parts) and the strip with the best *area
+density* is emitted. Density is part area over the sheet area the strip consumes, so a
+half-empty strip and an over-wide strip are both penalised, and the choice between them
+is made on the same scale.
+
+Non-exact 2-stage means a strip of width W may hold any part of width <= W, with a third
+trim rip. Once filled, a strip is shrunk to the widest part it actually holds — the
+normal-patterns argument — which recovers the unused width and cancels the trim cuts for
+parts already at that width.
+
+Sheet packing: seed each sheet with the widest remaining strip, then fill the rest by
+knapsack over blocks of equal-width strips, so a track saw stop change is charged once
+per distinct width rather than once per rip.
+"""
+from __future__ import annotations
+
+import random
+from collections import Counter
+
+import numpy as np
+
+from .knapsack import np_knapsack, split_groups
+from .model import CutConfig, PartType, Pattern, Placement, Strip
+
+NEG = -1e18
+
+
+def _variants(types: list[PartType], cfg: CutConfig) -> list[tuple]:
+    """Every legal (part, width, length) orientation with its remaining quantity."""
+    out = []
+    for pt in types:
+        for w, l in pt.variants():
+            if w <= cfg.usable_w and l <= cfg.usable_l:
+                out.append((pt, w, l))
+    return out
+
+
+def _fill_strip(width: int, cands: list[tuple], remaining: Counter, cfg: CutConfig,
+                rng: random.Random, jitter: float, trim_units: float = 0.0):
+    """Knapsack-fill one strip of the given width. Returns (placements, used_length)."""
+    elig = [(i, pt, w, l) for i, (pt, w, l) in enumerate(cands)
+            if w <= width and remaining[pt] > 0]
+    if not elig:
+        return None
+    # one orientation per part per strip decision: keep the longest that still fits
+    by_part: dict[PartType, tuple] = {}
+    for i, pt, w, l in elig:
+        prev = by_part.get(pt)
+        if prev is None or (w, l) > (prev[2], prev[3]):
+            by_part[pt] = (i, pt, w, l)
+    elig = list(by_part.values())
+
+    # Value is *useful area* expressed in strip-length units, not length filled:
+    # a part of width w in a strip of width W wastes (W-w) along its whole length, which
+    # is l*(W-w)/W of equivalent strip. So val = l*w/W, plus the kerf it saves by
+    # sharing a cut, less the cost of the trim rip it needs when w < W.
+    items = []
+    for _, pt, w, l in elig:
+        size = l + cfg.kerf_cross
+        val = l * (w / width) + cfg.kerf_cross
+        if w < width:
+            val -= trim_units
+        if jitter:
+            val *= 1.0 + rng.uniform(-jitter, jitter)
+        items.append((size, max(val, 1e-6), remaining[pt]))
+
+    sizes, values, owner = split_groups(items)
+    if not sizes:
+        return None
+    _, _, chosen = np_knapsack(sizes, values, cfg.usable_l + cfg.kerf_cross)
+
+    counts: Counter = Counter()
+    for g in chosen:
+        idx, take = owner[g]
+        counts[idx] += take
+    if not counts:
+        return None
+
+    # longest parts first so the leftover ends up at the far end of the strip
+    order = sorted(counts, key=lambda i: -elig[i][3])
+    placements, offset = [], 0
+    for i in order:
+        _, pt, w, l = elig[i]
+        for _ in range(counts[i]):
+            placements.append(Placement(part=pt, length=l, width=w, offset=offset))
+            offset += l + cfg.kerf_cross
+    return placements, offset - cfg.kerf_cross
+
+
+def _build_strips(types: list[PartType], cfg: CutConfig, rng: random.Random,
+                  jitter: float, trim_weight: float,
+                  qty: dict[PartType, int] | None = None) -> list[Strip]:
+    cands = _variants(types, cfg)
+    remaining = Counter(qty if qty is not None else {pt: pt.qty for pt in types})
+    thickness = types[0].thickness
+    sheet_area = cfg.usable_w * cfg.usable_l
+    dollars_per_area = cfg.cost_of_sheet(thickness) / sheet_area
+    trim_cost = (cfg.t_trim + cfg.t_trim_stop * 0.25) * cfg.dollars_per_min() * trim_weight
+
+    strips: list[Strip] = []
+    while sum(remaining.values()) > 0:
+        widths = sorted({w for pt, w, l in cands if remaining[pt] > 0}, reverse=True)
+        best = None
+        for width in widths:
+            # trim cost converted to strip-length units at this width
+            tu = trim_cost / (cfg.cost_of_sheet(thickness) * width / sheet_area)
+            got = _fill_strip(width, cands, remaining, cfg, rng, jitter, tu)
+            if got is None:
+                continue
+            placements, _ = got
+            shrunk = max(p.width for p in placements)      # normal patterns
+            part_area = sum(p.width * p.length for p in placements)
+            trims = sum(1 for p in placements if p.width < shrunk)
+            value = part_area * dollars_per_area - trims * trim_cost
+            density = value / (shrunk * cfg.usable_l)
+            if best is None or density > best[0]:
+                best = (density, shrunk, placements)
+        if best is None:
+            break
+        _, shrunk, placements = best
+        strips.append(Strip(width=shrunk, placements=placements))
+        for p in placements:
+            remaining[p.part] -= 1
+    return strips
+
+
+def _pack_sheets(strips: list[Strip], thickness: float, cfg: CutConfig,
+                 rng: random.Random) -> list[Pattern]:
+    """Bin-pack strips across the sheet width, widest first so fillers stay available."""
+    cap = cfg.usable_w + cfg.kerf_rip
+    stop_penalty = (cfg.t_track_stop * cfg.dollars_per_min()
+                    / (cfg.cost_of_sheet(thickness) / cfg.usable_w))
+
+    pool: dict[int, list[Strip]] = {}
+    for s in strips:
+        pool.setdefault(s.width, []).append(s)
+
+    patterns: list[Pattern] = []
+    while any(pool.values()):
+        # seed with the widest strip: large items first, small ones kept as fillers
+        seed_w = max(w for w, v in pool.items() if v)
+        pat = Pattern(thickness=thickness)
+        pat.strips.append(pool[seed_w].pop())
+        if not pool[seed_w]:
+            del pool[seed_w]
+        room = cap - (seed_w + cfg.kerf_rip)
+
+        while room > 0:
+            widths = [w for w, v in pool.items() if v and w + cfg.kerf_rip <= room]
+            if not widths:
+                break
+            items, owner_w = [], []
+            for w in widths:
+                maxm = min(len(pool[w]), room // (w + cfg.kerf_rip))
+                if maxm < 1:
+                    continue
+                for m in range(1, maxm + 1):
+                    size = m * (w + cfg.kerf_rip)
+                    bonus = stop_penalty if w == seed_w else 0.0
+                    items.append((size, float(size) - stop_penalty + bonus, 1))
+                    owner_w.append((w, m))
+            if not items:
+                break
+            sizes, values, owner = split_groups(items)
+            _, _, chosen = np_knapsack(sizes, values, room)
+            # keep at most one block per width
+            take: dict[int, int] = {}
+            for g in chosen:
+                idx, _ = owner[g]
+                w, m = owner_w[idx]
+                take[w] = max(take.get(w, 0), m)
+            if not take:
+                break
+            progressed = False
+            for w, m in sorted(take.items(), reverse=True):
+                for _ in range(min(m, len(pool.get(w, [])))):
+                    if room < w + cfg.kerf_rip:
+                        break
+                    pat.strips.append(pool[w].pop())
+                    room -= w + cfg.kerf_rip
+                    progressed = True
+                if w in pool and not pool[w]:
+                    del pool[w]
+            if not progressed:
+                break
+
+        patterns.append(pat)
+    return patterns
+
+
+def solve_thickness(types: list[PartType], cfg: CutConfig, rng: random.Random,
+                    jitter: float = 0.0, trim_weight: float = 1.0,
+                    qty: dict[PartType, int] | None = None) -> list[Pattern]:
+    strips = _build_strips(types, cfg, rng, jitter, trim_weight, qty)
+    return _pack_sheets(strips, types[0].thickness, cfg, rng)
+
+
+def solve(demand: list[PartType], cfg: CutConfig, rng: random.Random, **kw
+          ) -> list[Pattern]:
+    by_t: dict[float, list[PartType]] = {}
+    for pt in demand:
+        by_t.setdefault(pt.thickness, []).append(pt)
+    out: list[Pattern] = []
+    for t in sorted(by_t, reverse=True):
+        out.extend(solve_thickness(by_t[t], cfg, rng, **kw))
+    return out
