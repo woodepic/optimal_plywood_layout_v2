@@ -27,8 +27,9 @@ def main():
     ap.add_argument("--trim-weight", type=float, default=None,
                     help="force the construction bias against trim rips (default: "
                          "randomised per restart). Scoring is unaffected.")
-    ap.add_argument("--no-swap", action="store_true",
-                    help="ablation: normal rip axis only (the historical behaviour)")
+    ap.add_argument("--swap", action="store_true",
+                    help="search both rip axes (2.2x slower; never wins on the "
+                         "kitchen part mix, see solve_thickness)")
     ap.add_argument("--no-block-lift", action="store_true",
                     help="ablation: skip the block-lifted equal-length fill")
     ap.add_argument("--no-exact-fill", action="store_true",
@@ -76,7 +77,7 @@ def main():
                            on_result=note,
                            extra={"exact_fill_probe": not args.no_exact_fill,
                                   "block_lift": not args.no_block_lift,
-                                  **({"swapped": False} if args.no_swap else {}),
+                                  **({"swapped": None} if args.swap else {}),
                                   "width_reuse": not args.no_width_reuse,
                                   "weight_thickness": args.weight_thickness,
                                   **({} if args.trim_weight is None

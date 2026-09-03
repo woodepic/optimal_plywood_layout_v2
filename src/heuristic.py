@@ -323,14 +323,21 @@ def solve_thickness(types: list[PartType], cfg: CutConfig, rng: random.Random,
                     max_strip_width: int | None = None,
                     exact_fill_probe: bool = True,
                     width_reuse: bool = True,
-                    swapped: bool | None = None,
+                    swapped: bool | None = False,
                     block_lift: bool = True) -> list[Pattern]:
     """Build sheets for one thickness.
 
-    swapped=None tries both rip axes and keeps whichever scores less. The two are
-    genuinely different pattern families, not reflections: the normal axis runs strips
-    the 96" way and stacks them across 48", the swapped axis runs them 48" and stacks
-    across 96". Until now only the normal axis existed.
+    swapped=None tries both rip axes and keeps whichever scores less; False (the
+    default) builds only the normal axis.
+
+    The two are genuinely different pattern families, not reflections: the normal axis
+    runs strips the 96" way and stacks them across 48", the swapped axis runs them 48"
+    and stacks across 96". Measured on the kitchen assembly the swapped family is never
+    chosen -- 0 sheets of 17 in every arm -- and searching both costs 2.2x the wall
+    time for nothing. The reason is a tiling argument specific to this part mix: parts
+    22-35" long divide a 96" run into 2-4 pieces with little waste, but divide a 48"
+    run into exactly one, wasting ~30%. A mix with lengths near 24" or 48" would
+    invert that, so the capability stays, opt-in via --swap.
     """
     from .cost import score as _score
 

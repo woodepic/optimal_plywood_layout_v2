@@ -516,6 +516,39 @@ def test_block_lift_never_double_allocates_an_orientation():
           f"one part type used two orientations in one strip: {lengths}")
 
 
+def test_migrate_strip_respects_the_destination_axis():
+    """A strip built for a 96in run must not be migrated onto a swapped sheet.
+
+    Regression: migrate_strip checked thickness and width slack but not the
+    destination's rip axis, so ~19% of its attempts produced uncuttable layouts.
+    """
+    from src.improve import migrate_strip
+    import random as _r
+
+    cfg = CutConfig()
+    pt = _mk(10, 70, qty=1)
+    filler = _mk(10, 20, qty=1)
+    # source: a normal sheet holding a 70in-long strip
+    src = Pattern(thickness=0.5, swapped=False,
+                  strips=[_strip(cfg, 10, [(pt, 10, 70)])])
+    # destination: a swapped sheet, only 48in of run, but plenty of width to spare
+    dst = Pattern(thickness=0.5, swapped=True,
+                  strips=[_strip(cfg, 10, [(filler, 10, 20)])])
+    check_pattern(src, cfg)
+    check_pattern(dst, cfg)
+
+    for trial in range(40):
+        out = migrate_strip([src, dst], cfg, _r.Random(trial))
+        if out is None:
+            continue
+        for i, p in enumerate(out):
+            try:
+                check_pattern(p, cfg)
+            except LayoutError as e:
+                check(False, f"migrate_strip produced an uncuttable sheet: {e}")
+                return
+
+
 if __name__ == "__main__":
     for name, fn in sorted(globals().items()):
         if name.startswith("test_") and callable(fn):

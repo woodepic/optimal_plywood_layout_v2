@@ -225,6 +225,11 @@ def migrate_strip(patterns, cfg, rng, **_):
                     continue
                 if abs(cand[dpi].thickness - src_pat.thickness) > 1e-9:
                     continue
+                # The destination's rip axis decides how much run a strip has. A strip
+                # built for a 96" run does not fit a swapped sheet's 48". Omitting this
+                # check made 19% of attempts produce uncuttable layouts.
+                if strip.used_length(cfg) > cand[dpi].sheet_dims(cfg)[1]:
+                    continue
                 need = strip.width + (cfg.kerf_track_saw if cand[dpi].strips else 0)
                 if _width_slack(cand[dpi], cfg) < need:
                     continue
@@ -398,14 +403,17 @@ def flip_axis(patterns, cfg, rng, by_t=None, solve_kw=None, **_):
 # merge_strips finds nothing to do 83% of the time, because strips coming out of
 # construction are already well filled along their length.
 MOVES = [
-    ("move_part",      14, move_part),      # applies always, gains 12%
-    ("swap_parts",     20, swap_parts),     # gains 28%
-    ("merge_strips",    4, merge_strips),   # rarely applicable, gains 10%
-    ("migrate_strip",  22, migrate_strip),  # gains 40% -- best of the set
-    ("drain_strip",    10, drain_strip),    # gains 18%
-    ("ruin_recreate",  16, ruin_recreate),  # expensive rebuild, gains 17%
-    ("rebuild_narrow", 14, rebuild_narrow), # expensive rebuild, gains 26%
-    ("flip_axis",      10, flip_axis),      # rebuild one sheet on the other rip axis
+    ("move_part",      12, move_part),      # gains 16%
+    ("swap_parts",     16, swap_parts),     # gains 20%
+    ("merge_strips",   10, merge_strips),   # gains 24% now that strips carry slack
+    ("migrate_strip",  24, migrate_strip),  # gains 39% -- still the best of the set
+    ("drain_strip",    12, drain_strip),    # gains 22%
+    ("ruin_recreate",   6, ruin_recreate),  # gains only 5%: the targeted rebuilds
+                                            # below have taken over its job
+    ("rebuild_narrow", 18, rebuild_narrow), # gains 28%
+    ("flip_axis",       2, flip_axis),      # gains 1%. Kept only because a different
+                                            # part mix could make the other rip axis
+                                            # pay; for cabinet parts it never does.
 ]
 
 
