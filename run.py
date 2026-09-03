@@ -21,6 +21,12 @@ def main():
     ap.add_argument("--out", default="out/best.pkl")
     ap.add_argument("--shave", type=float, default=0.0, help="what-if: shave up to X inches off near-miss widths")
     ap.add_argument("--config", default="config.json", help="cost model JSON; omit to use built-in defaults")
+    ap.add_argument("--no-weight-thickness", action="store_true",
+                    help="ablation: pick a thickness group uniformly when rebuilding")
+    ap.add_argument("--no-exact-fill", action="store_true",
+                    help="ablation: skip the exactly-filled-strip probe")
+    ap.add_argument("--no-width-reuse", action="store_true",
+                    help="ablation: do not charge a stop change for a new strip width")
     ap.add_argument("-w", "--workers", type=int, default=None,
                     help="parallel restarts; default all cores, 1 for in-process")
     ap.add_argument("--no-trim", action="store_true", help="exact 2-stage only")
@@ -59,7 +65,11 @@ def main():
 
     best_r, all_r = search(demand, cfg, args.restarts, args.improve,
                            base_seed=args.seed, workers=args.workers,
-                           on_result=note)
+                           on_result=note,
+                           extra={"exact_fill_probe": not args.no_exact_fill,
+                                  "width_reuse": not args.no_width_reuse,
+                                  "weight_thickness":
+                                      not args.no_weight_thickness})
     best, best_score, best_kw = best_r.patterns, score(best_r.patterns, cfg), best_r.params
     check_job(best, demand, cfg)
 

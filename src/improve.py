@@ -303,26 +303,31 @@ def _release(patterns, cfg, rng, thickness, frac):
     return others, kept, released
 
 
-def _pick_thickness(patterns, by_t, rng):
-    """Choose a thickness group in proportion to how many sheets it has.
+def _pick_thickness(patterns, by_t, rng, weighted: bool = False):
+    """Choose a thickness group to rebuild.
 
-    Uniform choice wasted effort: a 4-sheet group was ruined as often as a 13-sheet
-    one despite having a fraction of the opportunity.
+    Weighting by sheet count sounds right -- a 4-sheet group has a fraction of the
+    opportunity of a 13-sheet one -- but it also steers every rebuild at the larger
+    group, where each rebuild is more expensive. Whether the better targeting pays for
+    the slower iterations is measured, not assumed, so it stays switchable.
     """
     counts = {t: sum(1 for p in patterns if abs(p.thickness - t) < 1e-9) for t in by_t}
     live = [t for t, n in counts.items() if n >= 2]
     if not live:
         return None
+    if not weighted:
+        return live[rng.randrange(len(live))]
     return rng.choices(live, weights=[counts[t] for t in live], k=1)[0]
 
 
-def ruin_recreate(patterns, cfg, rng, by_t=None, ruin_frac=0.3, solve_kw=None, **_):
+def ruin_recreate(patterns, cfg, rng, by_t=None, ruin_frac=0.3, solve_kw=None,
+                  weight_thickness=False, **_):
     """Release the worst sheets of one thickness and rebuild them together.
 
     Fixes the construction's end-game, where the parts that pack well are consumed
     first and low-quantity leftovers each land alone in a barely-filled strip.
     """
-    thickness = _pick_thickness(patterns, by_t, rng)
+    thickness = _pick_thickness(patterns, by_t, rng, weight_thickness)
     if thickness is None:
         return None
     got = _release(patterns, cfg, rng, thickness, ruin_frac)
@@ -334,7 +339,8 @@ def ruin_recreate(patterns, cfg, rng, by_t=None, ruin_frac=0.3, solve_kw=None, *
     return others + kept + rebuilt
 
 
-def rebuild_narrow(patterns, cfg, rng, by_t=None, solve_kw=None, **_):
+def rebuild_narrow(patterns, cfg, rng, by_t=None, solve_kw=None,
+                   weight_thickness=False, **_):
     """Rebuild sheets under a strip-width cap, to keep crosscuts on the cheap saw.
 
     A strip wider than the mitre capacity sends every one of its crosscuts to the track
@@ -344,7 +350,7 @@ def rebuild_narrow(patterns, cfg, rng, by_t=None, solve_kw=None, **_):
     smaller dimension exceeds the cap are exempt; the cap lifts once capped widths run
     out.
     """
-    thickness = _pick_thickness(patterns, by_t, rng)
+    thickness = _pick_thickness(patterns, by_t, rng, weight_thickness)
     if thickness is None:
         return None
     got = _release(patterns, cfg, rng, thickness, rng.choice([0.4, 0.6, 1.0]))
@@ -385,6 +391,7 @@ def _p_accept(delta: float, temp0: float, it: int, iters: int) -> float:
 def improve(patterns: list[Pattern], demand: list[PartType], cfg: CutConfig,
             rng: random.Random, iters: int = 500, ruin_frac: float = 0.3,
             temp0: float = 0.0, stats: dict | None = None,
+            weight_thickness: bool = True,
             **solve_kw) -> tuple[list[Pattern], Score]:
     by_t: dict[float, list[PartType]] = {}
     for pt in demand:
@@ -402,7 +409,8 @@ def improve(patterns: list[Pattern], demand: list[PartType], cfg: CutConfig,
         name = rng.choices(names, weights=weights, k=1)[0]
         try:
             cand = fns[name](cur, cfg, rng, by_t=by_t, ruin_frac=ruin_frac,
-                             solve_kw=solve_kw)
+                             solve_kw=solve_kw,
+                             weight_thickness=weight_thickness)
         except (LayoutError, ValueError):
             cand = None
         if cand is None:

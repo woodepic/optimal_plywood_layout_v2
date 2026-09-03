@@ -22,7 +22,8 @@ def restart_seed(base: int, index: int) -> int:
     return base * 100003 + index
 
 
-def draw_params(rng: random.Random, allow_trim: bool) -> tuple[dict, dict]:
+def draw_params(rng: random.Random, allow_trim: bool,
+                extra_imp: dict | None = None) -> tuple[dict, dict]:
     """Randomised construction and local-search parameters for one restart."""
     kw = dict(
         jitter=rng.choice([0.0, 0.0, 0.01, 0.03, 0.06]),
@@ -32,6 +33,8 @@ def draw_params(rng: random.Random, allow_trim: bool) -> tuple[dict, dict]:
         temp0=rng.choice([0.0, 5.0, 15.0]),
         ruin_frac=rng.choice([0.2, 0.3, 0.45]),
     )
+    if extra_imp:
+        imp.update(extra_imp)
     return kw, imp
 
 
@@ -45,9 +48,13 @@ class Restart:
 
 
 def run_restart(demand: list[PartType], cfg: CutConfig, base_seed: int, index: int,
-                iters: int) -> Restart:
+                iters: int, extra: dict | None = None) -> Restart:
     rng = random.Random(restart_seed(base_seed, index))
-    kw, imp = draw_params(rng, cfg.allow_trim)
+    extra = dict(extra or {})
+    imp_extra = {k: extra.pop(k) for k in ("weight_thickness",) if k in extra}
+    kw, imp = draw_params(rng, cfg.allow_trim, imp_extra)
+    if extra:
+        kw.update(extra)
     try:
         pats = solve(demand, cfg, rng, **kw)
         check_job(pats, demand, cfg)
@@ -67,20 +74,22 @@ def run_restart(demand: list[PartType], cfg: CutConfig, base_seed: int, index: i
 _CTX = {}
 
 
-def _init(demand, cfg, base_seed, iters):
+def _init(demand, cfg, base_seed, iters, extra=None):
     for var in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS",
                 "VECLIB_MAXIMUM_THREADS", "NUMEXPR_NUM_THREADS"):
         os.environ[var] = "1"
-    _CTX.update(demand=demand, cfg=cfg, base_seed=base_seed, iters=iters)
+    _CTX.update(demand=demand, cfg=cfg, base_seed=base_seed, iters=iters,
+                extra=extra or {})
 
 
 def _work(index: int) -> Restart:
     return run_restart(_CTX["demand"], _CTX["cfg"], _CTX["base_seed"], index,
-                       _CTX["iters"])
+                       _CTX["iters"], _CTX.get("extra"))
 
 
 def search(demand: list[PartType], cfg: CutConfig, restarts: int, iters: int,
-           base_seed: int = 0, workers: int | None = None, on_result=None):
+           base_seed: int = 0, workers: int | None = None, on_result=None,
+           extra: dict | None = None):
     """Run `restarts` independent restarts, returning (best_patterns, all Restarts).
 
     workers=1 runs in-process, which keeps tracebacks readable when debugging.
@@ -91,7 +100,7 @@ def search(demand: list[PartType], cfg: CutConfig, restarts: int, iters: int,
     out: list[Restart] = []
     if workers <= 1:
         for i in range(restarts):
-            r = run_restart(demand, cfg, base_seed, i, iters)
+            r = run_restart(demand, cfg, base_seed, i, iters, extra)
             out.append(r)
             if on_result:
                 on_result(r)
@@ -99,7 +108,7 @@ def search(demand: list[PartType], cfg: CutConfig, restarts: int, iters: int,
         import multiprocessing as mp
         ctx = mp.get_context("spawn")
         with ctx.Pool(workers, initializer=_init,
-                      initargs=(demand, cfg, base_seed, iters)) as pool:
+                      initargs=(demand, cfg, base_seed, iters, extra)) as pool:
             for r in pool.imap_unordered(_work, range(restarts), chunksize=1):
                 out.append(r)
                 if on_result:

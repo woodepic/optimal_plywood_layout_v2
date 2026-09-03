@@ -105,7 +105,7 @@ def _fill_strip(width: int, cands: list[tuple], remaining: Counter, cfg: CutConf
 
 def _strip_value(placements, width: int, cfg: CutConfig, thickness: float,
                  dollars_per_area: float, trim_cost: float, stop_cost: float,
-                 used_widths: set[int]) -> tuple[float, int]:
+                 used_widths: set[int] | None) -> tuple[float, int]:
     """Score one candidate strip in dollars per unit of sheet area it consumes.
 
     A strip occupies `shrunk x usable_l` of sheet whether or not it is well filled, so
@@ -138,7 +138,7 @@ def _strip_value(placements, width: int, cfg: CutConfig, thickness: float,
     # Opening a width not yet used in this job costs a track saw stop setting.
     # Charging it here is what makes construction prefer widths it already has, which
     # cuts stop changes and, because reused widths absorb more parts, strip count too.
-    if shrunk not in used_widths:
+    if used_widths is not None and shrunk not in used_widths:
         rip_cost += stop_cost
 
     value = (part_area * dollars_per_area - trims * trim_cost - cut_cost - rip_cost)
@@ -148,7 +148,9 @@ def _strip_value(placements, width: int, cfg: CutConfig, thickness: float,
 def _build_strips(types: list[PartType], cfg: CutConfig, rng: random.Random,
                   jitter: float, trim_weight: float,
                   qty: dict[PartType, int] | None = None,
-                  max_strip_width: int | None = None) -> list[Strip]:
+                  max_strip_width: int | None = None,
+                  exact_fill_probe: bool = True,
+                  width_reuse: bool = True) -> list[Strip]:
     cands = _variants(types, cfg)
     remaining = Counter(qty if qty is not None else {pt: pt.qty for pt in types})
     thickness = types[0].thickness
@@ -170,23 +172,33 @@ def _build_strips(types: list[PartType], cfg: CutConfig, rng: random.Random,
             capped = [w for w in widths if w <= max_strip_width]
             widths = capped or widths
 
+        reuse = used_widths if width_reuse else None
+
+        def evaluate(width, fill_mode):
+            tu = trim_cost / (cfg.cost_of_sheet(thickness) * width / sheet_area)
+            got = _fill_strip(width, cands, remaining, cfg, rng, jitter, tu, fill_mode)
+            if got is None:
+                return None
+            placements, _ = got
+            density, shrunk = _strip_value(
+                placements, width, cfg, thickness, dollars_per_area, trim_cost,
+                stop_cost, reuse)
+            return density, shrunk, placements
+
         best = None
         for width in widths:
-            # trim cost converted to strip-length units at this width
-            tu = trim_cost / (cfg.cost_of_sheet(thickness) * width / sheet_area)
-            # Two fills per width: one maximising useful area, one maximising raw
-            # length. Only the latter can land on an exactly filled strip.
-            for fill_mode in (False, True):
-                got = _fill_strip(width, cands, remaining, cfg, rng, jitter, tu,
-                                  fill_mode)
-                if got is None:
-                    continue
-                placements, _ = got
-                density, shrunk = _strip_value(
-                    placements, width, cfg, thickness, dollars_per_area, trim_cost,
-                    stop_cost, used_widths)
-                if best is None or density > best[0]:
-                    best = (density, shrunk, placements)
+            cand = evaluate(width, False)
+            if cand is not None and (best is None or cand[0] > best[0]):
+                best = cand
+                best_width = width
+
+        # Probe for an exactly filled strip on the winning width ONLY. Doing it for
+        # every candidate width made each iteration 2.5x more expensive, and the extra
+        # quality did not come close to paying for the iterations it cost.
+        if exact_fill_probe and best is not None:
+            alt = evaluate(best_width, True)
+            if alt is not None and alt[0] > best[0]:
+                best = alt
 
         if best is None:
             # Nothing could be placed while parts remain. Fail loudly: silently
@@ -270,8 +282,11 @@ def _pack_sheets(strips: list[Strip], thickness: float, cfg: CutConfig,
 def solve_thickness(types: list[PartType], cfg: CutConfig, rng: random.Random,
                     jitter: float = 0.0, trim_weight: float = 1.0,
                     qty: dict[PartType, int] | None = None,
-                    max_strip_width: int | None = None) -> list[Pattern]:
-    strips = _build_strips(types, cfg, rng, jitter, trim_weight, qty, max_strip_width)
+                    max_strip_width: int | None = None,
+                    exact_fill_probe: bool = True,
+                    width_reuse: bool = True) -> list[Pattern]:
+    strips = _build_strips(types, cfg, rng, jitter, trim_weight, qty, max_strip_width,
+                           exact_fill_probe, width_reuse)
     return _pack_sheets(strips, types[0].thickness, cfg, rng)
 
 
