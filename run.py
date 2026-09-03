@@ -21,8 +21,12 @@ def main():
     ap.add_argument("--out", default="out/best.pkl")
     ap.add_argument("--shave", type=float, default=0.0, help="what-if: shave up to X inches off near-miss widths")
     ap.add_argument("--config", default="config.json", help="cost model JSON; omit to use built-in defaults")
-    ap.add_argument("--no-weight-thickness", action="store_true",
-                    help="ablation: pick a thickness group uniformly when rebuilding")
+    ap.add_argument("--weight-thickness", action="store_true",
+                    help="weight rebuild choice by sheet count; measured 25%% slower "
+                         "for no gain, so OFF by default")
+    ap.add_argument("--trim-weight", type=float, default=None,
+                    help="force the construction bias against trim rips (default: "
+                         "randomised per restart). Scoring is unaffected.")
     ap.add_argument("--no-swap", action="store_true",
                     help="ablation: normal rip axis only (the historical behaviour)")
     ap.add_argument("--no-block-lift", action="store_true",
@@ -74,8 +78,9 @@ def main():
                                   "block_lift": not args.no_block_lift,
                                   **({"swapped": False} if args.no_swap else {}),
                                   "width_reuse": not args.no_width_reuse,
-                                  "weight_thickness":
-                                      not args.no_weight_thickness})
+                                  "weight_thickness": args.weight_thickness,
+                                  **({} if args.trim_weight is None
+                                     else {"trim_weight": args.trim_weight})})
     best, best_score, best_kw = best_r.patterns, score(best_r.patterns, cfg), best_r.params
     check_job(best, demand, cfg)
 

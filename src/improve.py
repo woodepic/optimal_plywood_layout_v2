@@ -419,7 +419,7 @@ def _p_accept(delta: float, temp0: float, it: int, iters: int) -> float:
 def improve(patterns: list[Pattern], demand: list[PartType], cfg: CutConfig,
             rng: random.Random, iters: int = 500, ruin_frac: float = 0.3,
             temp0: float = 0.0, stats: dict | None = None,
-            weight_thickness: bool = True,
+            weight_thickness: bool = False,
             **solve_kw) -> tuple[list[Pattern], Score]:
     by_t: dict[float, list[PartType]] = {}
     for pt in demand:
