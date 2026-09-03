@@ -410,6 +410,112 @@ def test_moves_can_delete_a_sheet():
     check(sum(len(p.strips) for p in out) == 3, "lost a strip while migrating")
 
 
+def test_swapped_axis_is_validated():
+    """A swapped sheet runs strips the short way and stacks them the long way."""
+    cfg = CutConfig()
+    # 40in-long parts cannot sit on a swapped sheet (only 48in of run, fine) but a
+    # 60in-long part cannot: the swapped axis runs strips along the 48in direction.
+    pt = _mk(20, 40, qty=4)
+    p = Pattern(thickness=0.5, swapped=True,
+                strips=[_strip(cfg, 20, [(pt, 20, 40)]),
+                        _strip(cfg, 20, [(pt, 20, 40)])])
+    across, along = p.sheet_dims(cfg)
+    check((across, along) == (to_units(96), to_units(48)),
+          f"swapped dims should be 96 across x 48 along, got {across}x{along}")
+    try:
+        check_pattern(p, cfg)
+    except LayoutError as e:
+        check(False, f"valid swapped sheet rejected: {e}")
+
+    # the same two strips exceed 48in of run on the swapped axis if the parts are 60in
+    long_pt = _mk(20, 60)
+    bad = Pattern(thickness=0.5, swapped=True,
+                  strips=[_strip(cfg, 20, [(long_pt, 20, 60)])])
+    try:
+        check_pattern(bad, cfg)
+        check(False, "swapped sheet with a 60in run was accepted (only 48in available)")
+    except LayoutError:
+        pass
+
+
+def test_solver_actually_uses_both_axes():
+    """solve_thickness with swapped=None must be able to return either family."""
+    from src.heuristic import solve_thickness
+    import random as _r
+
+    cfg = CutConfig()
+    # parts that tile 96 across much better than 48: 8 strips of 11-15/16in stack to
+    # 95-1/2in on the swapped axis, but only 4 fit across 48in
+    types = [_mk(11.9375, 40, qty=8)]
+    got = solve_thickness(types, cfg, _r.Random(0), swapped=True)
+    check(all(p.swapped for p in got), "swapped=True produced unswapped sheets")
+    check_job(got, types, cfg)
+
+    got2 = solve_thickness(types, cfg, _r.Random(0), swapped=False)
+    check(all(not p.swapped for p in got2), "swapped=False produced swapped sheets")
+    check_job(got2, types, cfg)
+    # the swapped family should need fewer sheets here
+    check(len(got) <= len(got2),
+          f"expected swapped to win on this instance: {len(got)} vs {len(got2)} sheets")
+
+
+def test_block_lift_respects_quantities_and_batches():
+    """The block-lifted filler must not over-allocate, and should group lengths."""
+    from collections import Counter as _C
+    from src.heuristic import _fill_strip_blocks, _variants
+
+    cfg = CutConfig()
+    # 6 parts at 20in and 2 at 31in, all 10in wide -> a 96in strip should take a run
+    a = _mk(10, 20, qty=6)
+    b = _mk(10, 31, qty=2)
+    types = [a, b]
+    cands = _variants(types, cfg, cfg.usable_w, cfg.usable_l)
+    remaining = _C({a: 6, b: 2})
+    got = _fill_strip_blocks(to_units(10), cands, remaining, cfg, cfg.usable_l,
+                             0.0, 0.0)
+    check(got is not None, "block filler found nothing")
+    placements, _ = got
+
+    used = _C()
+    for pl in placements:
+        used[pl.part] += 1
+    for pt, n in used.items():
+        check(n <= remaining[pt],
+              f"over-allocated {pt.label}: placed {n}, only {remaining[pt]} left")
+
+    # equal lengths must be adjacent, i.e. runs == distinct lengths
+    seq = [pl.length for pl in placements]
+    runs = 1 + sum(1 for x, y in zip(seq, seq[1:]) if x != y)
+    check(runs == len(set(seq)),
+          f"equal lengths not grouped: {runs} runs for {len(set(seq))} lengths")
+
+    # and it must actually fit
+    total = sum(seq) + (len(seq) - 1) * cfg.kerf_mitre_saw
+    check(total <= cfg.usable_l, f"block fill overflows the strip: {total}")
+
+
+def test_block_lift_never_double_allocates_an_orientation():
+    """A part with two orientations must be counted once, not once per length."""
+    from collections import Counter as _C
+    from src.heuristic import _fill_strip_blocks, _variants
+
+    cfg = CutConfig()
+    # 20x30 is eligible at width 35 in BOTH orientations (length 30 and length 20)
+    pt = _mk(20, 30, qty=3)
+    cands = _variants([pt], cfg, cfg.usable_w, cfg.usable_l)
+    check(len(cands) == 2, f"expected two orientations, got {len(cands)}")
+    remaining = _C({pt: 3})
+    got = _fill_strip_blocks(to_units(35), cands, remaining, cfg, cfg.usable_l,
+                             0.0, 0.0)
+    check(got is not None, "block filler found nothing")
+    placements, _ = got
+    check(len(placements) <= 3,
+          f"allocated {len(placements)} of a part with only 3 available")
+    lengths = {pl.length for pl in placements}
+    check(len(lengths) == 1,
+          f"one part type used two orientations in one strip: {lengths}")
+
+
 if __name__ == "__main__":
     for name, fn in sorted(globals().items()):
         if name.startswith("test_") and callable(fn):

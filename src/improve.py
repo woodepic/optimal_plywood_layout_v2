@@ -363,6 +363,33 @@ def rebuild_narrow(patterns, cfg, rng, by_t=None, solve_kw=None,
     return others + kept + rebuilt
 
 
+def flip_axis(patterns, cfg, rng, by_t=None, solve_kw=None, **_):
+    """Rebuild one sheet's parts on the other rip axis.
+
+    Construction picks an axis per thickness group, so without this every sheet in a
+    group shares one axis. This lets a single sheet defect to the other family, which
+    is how mixed-axis solutions appear at all.
+    """
+    if not patterns:
+        return None
+    idx = rng.randrange(len(patterns))
+    victim = patterns[idx]
+    thickness = victim.thickness
+    released: Counter = Counter()
+    for pt, n in victim.part_counts().items():
+        released[pt] += n
+    if not released:
+        return None
+    kw = dict(solve_kw or {})
+    kw.pop("swapped", None)
+    try:
+        rebuilt = solve_thickness(by_t[thickness], cfg, rng, qty=dict(released),
+                                  swapped=not victim.swapped, **kw)
+    except ValueError:
+        return None
+    return [p for i, p in enumerate(patterns) if i != idx] + rebuilt
+
+
 # name, weight, function
 # Weights are measured, not guessed -- see movestats.py, which reports how often each
 # move applies at all and how often that turns into an accepted improvement. The
@@ -378,6 +405,7 @@ MOVES = [
     ("drain_strip",    10, drain_strip),    # gains 18%
     ("ruin_recreate",  16, ruin_recreate),  # expensive rebuild, gains 17%
     ("rebuild_narrow", 14, rebuild_narrow), # expensive rebuild, gains 26%
+    ("flip_axis",      10, flip_axis),      # rebuild one sheet on the other rip axis
 ]
 
 

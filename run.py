@@ -23,6 +23,10 @@ def main():
     ap.add_argument("--config", default="config.json", help="cost model JSON; omit to use built-in defaults")
     ap.add_argument("--no-weight-thickness", action="store_true",
                     help="ablation: pick a thickness group uniformly when rebuilding")
+    ap.add_argument("--no-swap", action="store_true",
+                    help="ablation: normal rip axis only (the historical behaviour)")
+    ap.add_argument("--no-block-lift", action="store_true",
+                    help="ablation: skip the block-lifted equal-length fill")
     ap.add_argument("--no-exact-fill", action="store_true",
                     help="ablation: skip the exactly-filled-strip probe")
     ap.add_argument("--no-width-reuse", action="store_true",
@@ -67,6 +71,8 @@ def main():
                            base_seed=args.seed, workers=args.workers,
                            on_result=note,
                            extra={"exact_fill_probe": not args.no_exact_fill,
+                                  "block_lift": not args.no_block_lift,
+                                  **({"swapped": False} if args.no_swap else {}),
                                   "width_reuse": not args.no_width_reuse,
                                   "weight_thickness":
                                       not args.no_weight_thickness})
