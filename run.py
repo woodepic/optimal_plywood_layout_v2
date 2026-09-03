@@ -21,17 +21,22 @@ def main():
     ap.add_argument("--out", default="out/best.pkl")
     ap.add_argument("--shave", type=float, default=0.0, help="what-if: shave up to X inches off near-miss widths")
     ap.add_argument("--config", default="config.json", help="cost model JSON; omit to use built-in defaults")
-    ap.add_argument("--weight-thickness", action="store_true",
-                    help="weight rebuild choice by sheet count; measured 25%% slower "
-                         "for no gain, so OFF by default")
+    ap.add_argument("--no-weight-thickness", action="store_true",
+                    help="ablation: pick a thickness group uniformly when rebuilding. "
+                         "Weighting is ON by default: it costs ~25%% more per "
+                         "iteration but wins 2 of 3 seeds, mean $7.61")
     ap.add_argument("--trim-weight", type=float, default=None,
                     help="force the construction bias against trim rips (default: "
                          "randomised per restart). Scoring is unaffected.")
     ap.add_argument("--swap", action="store_true",
                     help="search both rip axes (2.2x slower; never wins on the "
                          "kitchen part mix, see solve_thickness)")
-    ap.add_argument("--no-block-lift", action="store_true",
-                    help="ablation: skip the block-lifted equal-length fill")
+    ap.add_argument("--mitre-stop-cost", action="store_true",
+                    help="charge a per-run mitre stop term in strip density. Measured "
+                         "WORSE in both arms of the isolation, so off by default.")
+    ap.add_argument("--block-lift", action="store_true",
+                    help="use the block-lifted equal-length fill (measured neutral "
+                         "for ~15%% more time per iteration)")
     ap.add_argument("--no-exact-fill", action="store_true",
                     help="ablation: skip the exactly-filled-strip probe")
     ap.add_argument("--no-width-reuse", action="store_true",
@@ -76,10 +81,11 @@ def main():
                            base_seed=args.seed, workers=args.workers,
                            on_result=note,
                            extra={"exact_fill_probe": not args.no_exact_fill,
-                                  "block_lift": not args.no_block_lift,
+                                  "block_lift": args.block_lift,
+                                  "mitre_stop_cost": args.mitre_stop_cost,
                                   **({"swapped": None} if args.swap else {}),
                                   "width_reuse": not args.no_width_reuse,
-                                  "weight_thickness": args.weight_thickness,
+                                  "weight_thickness": not args.no_weight_thickness,
                                   **({} if args.trim_weight is None
                                      else {"trim_weight": args.trim_weight})})
     best, best_score, best_kw = best_r.patterns, score(best_r.patterns, cfg), best_r.params

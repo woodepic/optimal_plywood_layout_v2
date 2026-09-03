@@ -308,7 +308,7 @@ def _release(patterns, cfg, rng, thickness, frac):
     return others, kept, released
 
 
-def _pick_thickness(patterns, by_t, rng, weighted: bool = False):
+def _pick_thickness(patterns, by_t, rng, weighted: bool = True):
     """Choose a thickness group to rebuild.
 
     Weighting by sheet count sounds right -- a 4-sheet group has a fraction of the
@@ -326,7 +326,7 @@ def _pick_thickness(patterns, by_t, rng, weighted: bool = False):
 
 
 def ruin_recreate(patterns, cfg, rng, by_t=None, ruin_frac=0.3, solve_kw=None,
-                  weight_thickness=False, **_):
+                  weight_thickness=True, **_):
     """Release the worst sheets of one thickness and rebuild them together.
 
     Fixes the construction's end-game, where the parts that pack well are consumed
@@ -345,7 +345,7 @@ def ruin_recreate(patterns, cfg, rng, by_t=None, ruin_frac=0.3, solve_kw=None,
 
 
 def rebuild_narrow(patterns, cfg, rng, by_t=None, solve_kw=None,
-                   weight_thickness=False, **_):
+                   weight_thickness=True, **_):
     """Rebuild sheets under a strip-width cap, to keep crosscuts on the cheap saw.
 
     A strip wider than the mitre capacity sends every one of its crosscuts to the track
@@ -402,18 +402,24 @@ def flip_axis(patterns, cfg, rng, by_t=None, solve_kw=None, **_):
 # another sheet, gains far more often than any move that re-cuts anything; while
 # merge_strips finds nothing to do 83% of the time, because strips coming out of
 # construction are already well filled along their length.
+# Weights are NOT simply proportional to measured gain rate. Gain rate counts strict
+# improvements, which is the wrong metric for a move whose job is diversification:
+# ruin_recreate gains on only ~5% of applications, but cutting its weight from 16 to 6
+# on that basis cost ~$16 at equal wall time. Its rejected moves are doing work that
+# the gain counter cannot see -- carrying the search out of a basin so the cheap
+# surgical moves have somewhere new to polish. Restored.
 MOVES = [
-    ("move_part",      12, move_part),      # gains 16%
-    ("swap_parts",     16, swap_parts),     # gains 20%
-    ("merge_strips",   10, merge_strips),   # gains 24% now that strips carry slack
-    ("migrate_strip",  24, migrate_strip),  # gains 39% -- still the best of the set
-    ("drain_strip",    12, drain_strip),    # gains 22%
-    ("ruin_recreate",   6, ruin_recreate),  # gains only 5%: the targeted rebuilds
-                                            # below have taken over its job
-    ("rebuild_narrow", 18, rebuild_narrow), # gains 28%
-    ("flip_axis",       2, flip_axis),      # gains 1%. Kept only because a different
-                                            # part mix could make the other rip axis
-                                            # pay; for cabinet parts it never does.
+    ("move_part",      14, move_part),
+    ("swap_parts",     20, swap_parts),
+    ("merge_strips",   10, merge_strips),   # 4 -> 10: measured 24% once strips
+                                            # carry slack for it to work with
+    ("migrate_strip",  22, migrate_strip),  # best gain rate in the set, ~39%
+    ("drain_strip",    10, drain_strip),
+    ("ruin_recreate",  16, ruin_recreate),  # diversifier: do not judge by gain rate
+    ("rebuild_narrow", 14, rebuild_narrow),
+    ("flip_axis",       0, flip_axis),      # zero: the swapped axis is never chosen on
+                                            # this part mix, so there is nowhere to
+                                            # flip to. Kept for a mix that suits it.
 ]
 
 
@@ -427,7 +433,7 @@ def _p_accept(delta: float, temp0: float, it: int, iters: int) -> float:
 def improve(patterns: list[Pattern], demand: list[PartType], cfg: CutConfig,
             rng: random.Random, iters: int = 500, ruin_frac: float = 0.3,
             temp0: float = 0.0, stats: dict | None = None,
-            weight_thickness: bool = False,
+            weight_thickness: bool = True,
             **solve_kw) -> tuple[list[Pattern], Score]:
     by_t: dict[float, list[PartType]] = {}
     for pt in demand:

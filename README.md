@@ -164,6 +164,44 @@ So neither knob breaks the plateau. Roughly 100-120 s of search gets within 0.6%
 ceiling is set by the construction heuristic and the local-search move set, not by how
 long either runs.
 
+## Measured dead ends
+
+Negative results, kept because they cost real time to establish and say where the
+remaining gain is *not*.
+
+**Second rip axis.** `Pattern.swapped` existed from the start and was never set. Now
+implemented — and never chosen: 0 swapped sheets of 17 in every ablation arm, while
+searching both axes costs 2.2x the wall time. The cause is a tiling argument specific
+to this part mix: parts 22-35" long divide a 96" run into 2-4 pieces with little waste,
+but divide a 48" run into exactly one, wasting ~30%. A mix with lengths near 24" or 48"
+would invert this, so the capability stays behind `--swap`.
+
+**Two-direction rips (banding).** Not built, on an economic argument. A band cut costs
+`min_per_track_rip + extra_min_per_track_stop_change` = $6.25, so it must reclaim more
+than 0.098 sheets of area to pay. Measured tail waste is 1.20 sheets across 17 sheets,
+and only 2 sheets have tails big enough; best case assuming 100% reclaim is $15.97,
+realistic ~$2. It becomes worth revisiting if stop changes get cheaper — at
+`extra_min_per_track_stop_change = 0` the best case rises to $55. Note the swapped axis
+is a *free* approximation of banding (shorter strips, no extra cuts), and even that does
+not pay here.
+
+**Block-lifted mitre runs.** Implemented (`_fill_strip_blocks`, items are "m parts of
+length l", keyed by length so two parts of equal length share a setting). Measured
+neutral for ~15% more time per iteration, so `--block-lift` is opt-in. The related
+per-run mitre term in strip density measured *worse* in both isolation arms and is off
+by default (`--mitre-stop-cost`).
+
+**Trim economics.** Sweeping the construction bias: forbidding trims entirely costs
+**$96** and 2 extra sheets ($2,285 vs $2,188), so trims clearly earn their place. No
+fixed bias beat the default randomisation — control $2,188 against $2,191 (near-forbid),
+$2,203, $2,222, and $2,249 (encourage-trims, which produced 49 trims dragging $150 of
+stop changes). Conclusion: leave the per-restart randomisation alone.
+
+**Judging a move by its gain rate.** `ruin_recreate` gains on only ~5% of applications,
+so I cut its weight 16 -> 6. That cost ~$16 at equal wall time. Its rejected moves carry
+the search out of a basin so the cheap surgical moves have somewhere new to polish —
+work the gain counter cannot see. Diversifying moves should not be weighted by gain rate.
+
 ## Design advice (`advise.py`)
 
 The optimizer takes parts as given; `advise.py` asks which parts are awkward and how

@@ -112,7 +112,8 @@ def _fill_strip(width: int, cands: list[tuple], remaining: Counter, cfg: CutConf
 
 def _strip_value(placements, width: int, cfg: CutConfig, thickness: float,
                  dollars_per_area: float, trim_cost: float, stop_cost: float,
-                 used_widths: set[int] | None, along: int) -> tuple[float, int]:
+                 used_widths: set[int] | None, along: int,
+                 mitre_stop_cost: bool = False) -> tuple[float, int]:
     """Score one candidate strip in dollars per unit of sheet area it consumes.
 
     A strip occupies `shrunk x usable_l` of sheet whether or not it is well filled, so
@@ -143,7 +144,7 @@ def _strip_value(placements, width: int, cfg: CutConfig, thickness: float,
     # A mitre stop setting is needed per RUN of equal consecutive lengths. Parts are
     # laid out length-sorted, so runs == distinct lengths. Wide strips are exempt:
     # their crosscuts go to the track saw at a flat rate that already includes setup.
-    if not wide:
+    if not wide and mitre_stop_cost:
         runs = len({p.length for p in placements})
         cut_cost += runs * cfg.extra_min_per_mitre_stop_change * cfg.dollars_per_min()
 
@@ -167,7 +168,8 @@ def _build_strips(types: list[PartType], cfg: CutConfig, rng: random.Random,
                   width_reuse: bool = True,
                   across: int | None = None,
                   along: int | None = None,
-                  block_lift: bool = True) -> list[Strip]:
+                  block_lift: bool = False,
+                  mitre_stop_cost: bool = False) -> list[Strip]:
     across = cfg.usable_w if across is None else across
     along = cfg.usable_l if along is None else along
     cands = _variants(types, cfg, across, along)
@@ -202,7 +204,7 @@ def _build_strips(types: list[PartType], cfg: CutConfig, rng: random.Random,
             placements, _ = got
             density, shrunk = _strip_value(
                 placements, width, cfg, thickness, dollars_per_area, trim_cost,
-                stop_cost, reuse, along)
+                stop_cost, reuse, along, mitre_stop_cost)
             return density, shrunk, placements
 
         best = None
@@ -324,7 +326,8 @@ def solve_thickness(types: list[PartType], cfg: CutConfig, rng: random.Random,
                     exact_fill_probe: bool = True,
                     width_reuse: bool = True,
                     swapped: bool | None = False,
-                    block_lift: bool = True) -> list[Pattern]:
+                    block_lift: bool = False,
+                    mitre_stop_cost: bool = False) -> list[Pattern]:
     """Build sheets for one thickness.
 
     swapped=None tries both rip axes and keeps whichever scores less; False (the
@@ -349,7 +352,7 @@ def solve_thickness(types: list[PartType], cfg: CutConfig, rng: random.Random,
         try:
             strips = _build_strips(types, cfg, rng, jitter, trim_weight, qty,
                                    max_strip_width, exact_fill_probe, width_reuse,
-                                   across, along, block_lift)
+                                   across, along, block_lift, mitre_stop_cost)
         except ValueError:
             # this axis cannot produce some part (too long for the short direction)
             continue
