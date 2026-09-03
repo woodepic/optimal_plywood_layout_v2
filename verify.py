@@ -45,7 +45,7 @@ from OCP.GProp import GProp_GProps
 from OCP.STEPControl import STEPControl_Reader
 
 from src.geometry import _solids, extract_parts
-from src.model import CutConfig, fmt, load_config, to_units
+from src.model import CutConfig, fmt, load_config, to_inches, to_units
 from src.parts import load_demand
 from src.validate import check_job
 
@@ -68,12 +68,18 @@ def solid_volumes(step_path: str) -> list[float]:
     return out
 
 
-def audit(raw, vols, patterns, demand, cfg):
+def audit(raw, vols, patterns, demand, cfg, raw_in=None):
     """Cross-check measurements and layout. Returns (problems, notes, stats).
+
+    `raw` is measured in MODEL units, which keeps the area and volume checks scale-free
+    -- they are ratios. `raw_in` is the same measurement converted to INCHES, needed by
+    the rounding and thickness checks because the grid and the stock list are both in
+    inches. Defaults to `raw` for callers whose model units already are inches.
 
     Pure function over already-gathered inputs so it can be tested with deliberately
     corrupted data -- an audit that has never been seen to fail proves nothing.
     """
+    raw_in = raw if raw_in is None else raw_in
     problems: list[str] = []
     notes: list[str] = []
 
@@ -115,6 +121,33 @@ def audit(raw, vols, patterns, demand, cfg):
     want: Counter = Counter()
     for pt in demand:
         want[(pt.w, pt.l, pt.thickness)] += pt.qty
+
+    # Grid rounding must never shrink a part, and the demand list must be exactly the
+    # rounded measurements. Without this the audit compares rounded demand against a
+    # rounded layout and a rounding-direction bug would pass unnoticed: 112 of the 201
+    # parts in this assembly are off the 1/32" grid, so the rounding step is doing real
+    # work on more than half of them.
+    from_raw: Counter = Counter()
+    for p in raw_in:
+        w, l = to_units(p.width), to_units(p.length)
+        if to_inches(w) < p.width - 1e-9 or to_inches(l) < p.length - 1e-9:
+            problems.append(
+                f'solid {p.index}: measured {p.width:.5f}x{p.length:.5f}" but rounds '
+                f'to {to_inches(w):.5f}x{to_inches(l):.5f}" -- rounding SHRANK the '
+                f'part; it must only ever round up')
+        if w > l:
+            w, l = l, w
+        try:
+            from_raw[(w, l, cfg.snap_thickness(p.thickness))] += 1
+        except ValueError as e:
+            problems.append(f"solid {p.index}: {e}")
+    if from_raw and from_raw != want:
+        only_raw = {k: v for k, v in from_raw.items() if want.get(k, 0) != v}
+        problems.append(
+            f"the demand list does not match the rounded measurements: "
+            f"{len(only_raw)} type(s) differ, e.g. " + ", ".join(
+                f'{fmt(k[0])}x{fmt(k[1])} @{k[2]}" measured {v} vs demand '
+                f'{want.get(k, 0)}' for k, v in list(sorted(only_raw.items()))[:3]))
     got: Counter = Counter()
     for pat in patterns:
         for s in pat.strips:
@@ -163,13 +196,14 @@ def main() -> int:
     d = pickle.load(open(args.pkl, "rb"))
 
     # measured in MODEL units so every comparison is scale-free
-    raw = extract_parts(args.step, unit_scale=1.0)
+    raw = extract_parts(args.step, unit_scale=1.0)      # model units: ratios only
+    raw_in = extract_parts(args.step)                   # inches: grid and stock checks
     vols = solid_volumes(args.step)
     demand = load_demand(args.step, cfg)
 
     print(f"auditing {args.pkl} against {args.step}")
     print("=" * 74)
-    problems, notes, st = audit(raw, vols, d["patterns"], demand, cfg)
+    problems, notes, st = audit(raw, vols, d["patterns"], demand, cfg, raw_in)
     print(f'solids in STEP file      {st["solids"]}')
     print(f'measured as panels       {st["measured"]}')
     print(f'parts in layout          {st["in_layout"]}')

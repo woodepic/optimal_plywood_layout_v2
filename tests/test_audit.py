@@ -122,6 +122,27 @@ def test_audit_notes_a_solid_that_is_not_a_panel():
           "a low-fill solid must be a note, not a failure")
 
 
+def test_audit_catches_rounding_that_shrinks_a_part():
+    """Grid rounding must only ever round UP. Down would cut parts too small."""
+    cfg, raw, vols, demand, pats = _fixture()
+    # measured slightly larger than the demand entry, i.e. rounding went down
+    raw[2] = replace(raw[2], width=12.02, length=20.0, face_area=12.02 * 20.0)
+    vols[2] = 0.75 * 12.02 * 20.0
+    problems, _, _ = audit(raw, vols, pats, demand, cfg)
+    check(any("does not match the rounded measurements" in p for p in problems),
+          f"a demand list inconsistent with the measurements was NOT caught. "
+          f"problems={problems}")
+
+
+def test_audit_catches_unsnappable_thickness():
+    cfg, raw, vols, demand, pats = _fixture()
+    raw[0] = replace(raw[0], thickness=0.30)
+    vols[0] = 0.30 * raw[0].width * raw[0].length
+    problems, _, _ = audit(raw, vols, pats, demand, cfg)
+    check(any("not within" in p for p in problems),
+          f"a thickness with no matching stock was NOT caught. problems={problems}")
+
+
 if __name__ == "__main__":
     for name, fn in sorted(globals().items()):
         if name.startswith("test_") and callable(fn):

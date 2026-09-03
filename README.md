@@ -151,6 +151,15 @@ integration, which shares nothing with the rotating-calipers bounding rectangle:
 | solids in file == parts in layout | dropped parts |
 | multiset of (t, w, l) matches the file | substituted or resized parts |
 | surplus reported | overproduction, which costs material |
+| rounded dims >= measured dims | grid rounding that shrinks a part |
+| demand list == rounded measurements | any error in the geometry -> demand mapping |
+
+That last pair matters more than it looks: 112 of the 201 parts in this assembly are
+*not* on the 1/32" grid (dimensions like 23.100" and 18.325"), so the rounding step is
+doing real work on more than half of them. All 112 round up, by at most 0.025" — you
+can trim a part that is a hair large, but not one that is a hair small. Without these
+two checks the audit would compare a rounded demand list against a rounded layout and a
+rounding-direction bug would pass unnoticed.
 
 Both ratio checks are **one-sided inequalities that hold for any shape**, not equalities
 assuming a perfect prism. Cabinet parts have dados and grooves — up to 4.3% of the
