@@ -89,7 +89,7 @@ def main():
                                   **({} if args.trim_weight is None
                                      else {"trim_weight": args.trim_weight})})
     best, best_score, best_kw = best_r.patterns, score(best_r.patterns, cfg), best_r.params
-    check_job(best, demand, cfg)
+    info = check_job(best, demand, cfg)
 
     dt = time.time() - t0
     fails = sum(1 for r in all_r if r.patterns is None)
@@ -145,8 +145,15 @@ def main():
         print(f'    {t}" ply                {got} sheets  (floor {bounds[t]:.2f} -> '
               f'{_ceil(bounds[t])}, gap {got - _ceil(bounds[t])})')
 
+    if info["surplus"]:
+        print()
+        print("  SURPLUS (produced more than demanded; legal but wastes material):")
+        for pt, n in sorted(info["surplus"].items(), key=lambda kv: -kv[1]):
+            print(f'    {pt.label} @{pt.thickness}"  +{n}')
     print()
     print(floor_report(demand, cfg, sc))
+    print()
+    print("  cross-check this layout against the STEP file:  python verify.py")
 
     save_if_better(best, best_score, demand, cfg, args.out, provenance={
         "seed": args.seed, "restarts": args.restarts, "improve": args.improve,

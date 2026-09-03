@@ -24,6 +24,7 @@ python3 -m venv .venv && .venv/bin/pip install cadquery-ocp numpy scipy ortools
 .venv/bin/python show.py out/best.pkl             # cut list
 .venv/bin/python advise.py                        # design-side easy wins
 .venv/bin/python sensitivity.py                   # re-score under varied weights
+.venv/bin/python verify.py                 # audit a layout against the STEP file
 .venv/bin/python tests/run_all.py          # all tests
 ```
 
@@ -130,6 +131,38 @@ gitignored.
   land alone in a barely-filled strip.
 - **`validate.py`** — independent geometry checker. Kerf and DP off-by-one bugs are
   silent, so nothing is scored until it passes.
+
+## Verifying a layout against the STEP file (`verify.py`)
+
+Everything in `validate.py` is *self-referential*: it confirms a layout is internally
+consistent with the demand list — but that demand list came from `geometry.py` in the
+same process. If geometry shrank every part, demand and layout would agree perfectly,
+every test would pass, and the score would come out **better**, because smaller parts
+are cheaper to cut. Dropped parts and shrunk parts both look like progress.
+
+`verify.py` closes that hole by going back to the STEP file and cross-checking against
+quantities computed by a different code path — OpenCASCADE's own volume and surface
+integration, which shares nothing with the rotating-calipers bounding rectangle:
+
+| check | catches |
+|---|---|
+| `face_area <= width x length` | a bounding rectangle smaller than the part |
+| `volume <= thickness x width x length` | shrinkage in any of the three axes |
+| solids in file == parts in layout | dropped parts |
+| multiset of (t, w, l) matches the file | substituted or resized parts |
+| surplus reported | overproduction, which costs material |
+
+Both ratio checks are **one-sided inequalities that hold for any shape**, not equalities
+assuming a perfect prism. Cabinet parts have dados and grooves — up to 4.3% of the
+material in this assembly is legitimately machined away — and an earlier version that
+asserted `volume == thickness x face_area` produced 60 false alarms for exactly that
+reason. Being ratios, they also do not depend on the unit-scale inference being right.
+
+`tests/test_audit.py` corrupts one thing at a time — a shrunk width, a shrunk
+thickness, a dropped part, a substituted size — and asserts the audit fails. An audit
+nobody has watched fail proves nothing.
+
+Run it before cutting.
 
 ## Failing loudly
 
