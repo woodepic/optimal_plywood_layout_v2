@@ -16,7 +16,7 @@ def load_demand(step_path: str, cfg: CutConfig, oversize: float = 0.0) -> list[P
         l = to_units(p.length + oversize)
         if w > l:
             w, l = l, w
-        counter[(w, l, round(p.thickness, 4))] += 1
+        counter[(w, l, cfg.snap_thickness(p.thickness))] += 1
 
     demand = [PartType(w=w, l=l, thickness=t, qty=n,
                        label=f"{fmt(w)}x{fmt(l)}")

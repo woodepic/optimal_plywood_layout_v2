@@ -148,10 +148,22 @@ def main():
     print()
     print(floor_report(demand, cfg, sc))
 
-    save_if_better(best, best_score, demand, cfg, args.out)
+    save_if_better(best, best_score, demand, cfg, args.out, provenance={
+        "seed": args.seed, "restarts": args.restarts, "improve": args.improve,
+        "restart_index": best_r.index, "params": best_kw, "git": _git_rev(),
+    })
 
 
-def save_if_better(patterns, sc, demand, cfg, path):
+def _git_rev():
+    import subprocess
+    try:
+        return subprocess.run(["git", "rev-parse", "--short", "HEAD"],
+                              capture_output=True, text=True, timeout=5).stdout.strip()
+    except Exception:
+        return ""
+
+
+def save_if_better(patterns, sc, demand, cfg, path, provenance=None):
     """Keep exactly one champion layout on disk, replaced only when genuinely beaten.
 
     The stored layout is re-scored under the *current* cost model before comparing, so
@@ -200,7 +212,8 @@ def save_if_better(patterns, sc, demand, cfg, path):
         # fields have since been renamed silently falls back to class defaults on
         # load, which reads as agreement when it is really amnesia.
         pickle.dump({"patterns": patterns, "cfg": cfg,
-                     "cfg_fields": config_to_dict(cfg), "demand": demand}, f)
+                     "cfg_fields": config_to_dict(cfg), "demand": demand,
+                     "provenance": provenance or {}}, f)
     txt = path.rsplit(".", 1)[0] + "_cutlist.txt"
     with open(txt, "w") as f:
         f.write(f"{sc}\n\n{cut_list(patterns, cfg)}\n")

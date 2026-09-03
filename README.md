@@ -24,7 +24,7 @@ python3 -m venv .venv && .venv/bin/pip install cadquery-ocp numpy scipy ortools
 .venv/bin/python show.py out/best.pkl             # cut list
 .venv/bin/python advise.py                        # design-side easy wins
 .venv/bin/python sensitivity.py                   # re-score under varied weights
-.venv/bin/python tests/test_core.py        # cross-checks
+.venv/bin/python tests/run_all.py          # all tests
 ```
 
 `-n` is the number of randomized restarts, `--improve` the local-search iterations per
@@ -130,6 +130,25 @@ gitignored.
   land alone in a barely-filled strip.
 - **`validate.py`** — independent geometry checker. Kerf and DP off-by-one bugs are
   silent, so nothing is scored until it passes.
+
+## Failing loudly
+
+Three places could once drop work in silence, which is the worst failure mode here: a
+short layout still validates, still scores, and scores *better* for having less to cut.
+All three now raise.
+
+- `geometry.parts_from_shape` refuses to return fewer parts than there are solids. A
+  solid that is not a flat panel is named and reported (`strict=False` to skip
+  deliberately).
+- `heuristic._build_strips` raises if parts remain that it cannot place, instead of
+  returning what it managed.
+- `CutConfig.snap_thickness` snaps a measured thickness to the nearest configured stock
+  within 1/32" and refuses otherwise. Unsnapped values are worse than a crash: demand is
+  grouped by thickness, so a 19 mm panel measured at 0.7480" would form its own material
+  group and quietly buy its own sheets.
+
+Champion layouts also record provenance — seed, restart index, construction parameters
+and git revision — so any saved layout can be traced back to the run that found it.
 
 ## Where the search budget belongs (measured)
 

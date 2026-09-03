@@ -167,27 +167,34 @@ def _min_area_rect(pts):
     return (min(best), max(best))
 
 
-def extract_parts(step_path: str, unit_scale: float | None = None) -> list[RawPart]:
-    """Read a STEP assembly and measure every solid in its own sheet plane.
+class UnmeasurableSolid(RuntimeError):
+    """A solid could not be measured as a flat panel."""
+
+
+def parts_from_shape(shape, unit_scale: float | None = None,
+                     strict: bool = True) -> list[RawPart]:
+    """Measure every solid in a shape in its own sheet plane.
 
     unit_scale converts model units to inches. If None it is inferred by assuming the
     largest part must fit a 4x8 sheet.
-    """
-    reader = STEPControl_Reader()
-    if reader.ReadFile(step_path) != 1:
-        raise RuntimeError(f"could not read {step_path}")
-    reader.TransferRoots()
-    shape = reader.OneShape()
 
+    strict=True refuses to return a short list. Dropping a solid quietly is the worst
+    failure mode available here: the layout still validates and still scores, and it
+    scores BETTER for having one fewer part to cut. You would cut 200 of 201 panels and
+    find out at assembly.
+    """
     raw = []
+    skipped = []
     for idx, solid in enumerate(_solids(shape)):
         sn = _sheet_normal(solid)
         if sn is None:
+            skipped.append((idx, "no planar faces: not a flat panel"))
             continue
         normal, _ = sn
         u, v, n = _frame(normal)
         pts3 = _mesh_points(solid, 1.0)
         if not pts3:
+            skipped.append((idx, "could not be triangulated"))
             continue
         pts2 = [(p[0] * u[0] + p[1] * u[1] + p[2] * u[2],
                  p[0] * v[0] + p[1] * v[1] + p[2] * v[2]) for p in pts3]
@@ -197,6 +204,18 @@ def extract_parts(step_path: str, unit_scale: float | None = None) -> list[RawPa
         # sheet face area = half the total surface minus edges; use the dominant bucket
         _, dom_area = sn
         raw.append((idx, thickness, w, l, dom_area / 2.0))
+
+    if skipped:
+        lines = [f"  solid {i}: {why}" for i, why in skipped]
+        msg = (f"{len(skipped)} of {len(raw) + len(skipped)} solids could not be "
+               f"measured as flat panels:\n" + "\n".join(lines))
+        if strict:
+            raise UnmeasurableSolid(
+                msg + "\n\nPass strict=False to skip them deliberately.")
+        print("WARNING: " + msg)
+
+    if not raw:
+        raise UnmeasurableSolid("no measurable solids found")
 
     if unit_scale is None:
         biggest = max(max(r[2], r[3]) for r in raw)
@@ -208,3 +227,13 @@ def extract_parts(step_path: str, unit_scale: float | None = None) -> list[RawPa
                 a * unit_scale * unit_scale)
         for idx, t, w, l, a in raw
     ]
+
+
+def extract_parts(step_path: str, unit_scale: float | None = None,
+                  strict: bool = True) -> list[RawPart]:
+    """Read a STEP assembly and measure every solid in its own sheet plane."""
+    reader = STEPControl_Reader()
+    if reader.ReadFile(step_path) != 1:
+        raise RuntimeError(f"could not read {step_path}")
+    reader.TransferRoots()
+    return parts_from_shape(reader.OneShape(), unit_scale, strict)

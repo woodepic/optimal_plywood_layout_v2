@@ -549,6 +549,29 @@ def test_migrate_strip_respects_the_destination_axis():
                 return
 
 
+def test_thickness_snapping():
+    """CAD does not hand you exactly 0.75, and an unsnapped value is worse than a crash."""
+    cfg = CutConfig()
+    for measured, want in ((0.75, 0.75), (0.750001, 0.75), (0.7480315, 0.75),
+                           (0.5, 0.5), (0.4999, 0.5)):
+        got = cfg.snap_thickness(measured)
+        check(got == want, f"{measured} snapped to {got}, want {want}")
+
+    # far from any stock must refuse, not silently form its own material group
+    try:
+        cfg.snap_thickness(0.25)
+        check(False, "0.25in accepted with no 1/4in stock configured")
+    except ValueError as e:
+        check("not within" in str(e), f"unhelpful message: {e}")
+
+    # and the tolerance is honoured
+    try:
+        cfg.snap_thickness(0.7480315, tol=0.0001)
+        check(False, "a tight tolerance was ignored")
+    except ValueError:
+        pass
+
+
 if __name__ == "__main__":
     for name, fn in sorted(globals().items()):
         if name.startswith("test_") and callable(fn):

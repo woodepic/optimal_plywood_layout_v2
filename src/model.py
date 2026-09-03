@@ -111,7 +111,29 @@ class CutConfig:
         for t, c in self.sheet_cost_by_thickness:
             if abs(t - thickness) < 1e-6:
                 return c
-        raise KeyError(f"no sheet price configured for thickness {thickness}")
+        raise KeyError(
+            f"no sheet price configured for thickness {thickness}; "
+            f"configured: {[t for t, _ in self.sheet_cost_by_thickness]}")
+
+    def snap_thickness(self, measured: float, tol: float = 1.0 / 32) -> float:
+        """Snap a measured thickness to the nearest configured stock.
+
+        CAD does not hand you exactly 0.75. A metric-designed panel is 19 mm =
+        0.7480", and STEP round-tripping produces things like 0.7500000001. Left
+        unsnapped those are worse than a crash: load_demand groups by thickness, so a
+        0.748 panel forms its OWN material group and quietly buys its own sheets.
+        """
+        stock = [t for t, _ in self.sheet_cost_by_thickness]
+        if not stock:
+            raise ValueError("no stock thicknesses configured")
+        best = min(stock, key=lambda t: abs(t - measured))
+        if abs(best - measured) > tol:
+            raise ValueError(
+                f'measured thickness {measured:.4f}" is not within {tol:.4f}" of any '
+                f'configured stock {stock}. Either add it to '
+                f'sheet_cost_by_thickness in config.json, or check whether this solid '
+                f'is really a plywood panel.')
+        return best
 
     def dollars_per_min(self) -> float:
         return self.labour_dollars_per_hour / 60.0
