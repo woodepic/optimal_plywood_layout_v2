@@ -13,6 +13,39 @@ Physically matched to a track saw + mitre saw workflow, one sheet at a time:
 3. **Trim** (optional, "non-exact 2-stage"): a third rip for a part narrower than its
    strip. Priced separately so you can decide how annoying it is.
 
+## The UI
+
+```bash
+./webapp/run_ui.sh              # then open the printed URL
+./webapp/run_ui.sh --port 9000
+```
+
+Binds `0.0.0.0`, so it prints a LAN address as well as localhost — any device on the
+same WiFi can use it. It has to run here rather than being a hosted page, because
+uploading a STEP file needs OpenCASCADE and solving needs numpy. Off-network access
+needs a tunnel (`cloudflared`, Tailscale); nothing is installed for that.
+
+Upload a STEP file, set costs, choose a time budget, Solve. The layout draws each sheet
+with strips coloured by width — equal widths share a colour, because equal widths share
+a track-saw stop setting — and cut lines coloured by which saw makes them: solid orange
+for a track-saw rip, dashed blue for a mitre crosscut, dashed orange for a crosscut on a
+strip too wide for the mitre saw, dotted purple for a trim rip. Hatching is offcut.
+
+Editing any cost **reprices the layout live** (milliseconds) and shows the delta against
+where you started. That is deliberately not the same thing as re-optimising, so the UI
+says so and offers a Re-solve button — repricing tells you what *this* plan costs under
+new weights, only solving finds the best plan *for* those weights.
+
+Save layouts to compare them. The comparison table reprices every saved layout under the
+costs currently in the form, so they stay comparable when you change your mind about a
+number. A saved layout that is invalid under the current model (a trimmed layout with
+trims disabled, say) says so rather than being silently dropped.
+
+Time budgets pick their own per-restart iteration count (`iters_for_budget`), aiming for
+a restart lasting about a third of the budget. Setting it too high means no restart
+finishes before the deadline; too low and the search never reaches the local search that
+does the real work.
+
 ## Run
 
 ```bash

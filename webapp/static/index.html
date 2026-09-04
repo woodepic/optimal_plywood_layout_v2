@@ -1,0 +1,74 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Plywood cut layout</title>
+<link rel="stylesheet" href="style.css">
+
+<div id="shell">
+  <aside id="side">
+    <div class="spread" style="margin-bottom:12px">
+      <h1>Cut layout</h1>
+      <span class="small muted" id="lanhint"></span>
+    </div>
+
+    <div class="card">
+      <h2>1 · Model</h2>
+      <input type="file" id="file" accept=".step,.stp" style="width:100%;font-size:12px">
+      <div id="upinfo" class="small muted" style="margin-top:7px">No model loaded.</div>
+      <label class="f" style="margin-top:8px"><span>or reuse an upload</span>
+        <select id="recent"></select></label>
+    </div>
+
+    <div class="card">
+      <h2>2 · Costs</h2>
+      <div id="cfgform"></div>
+      <div class="row" style="margin-top:8px">
+        <button id="cfgsave" title="Write these costs to config.json">Save costs</button>
+        <button id="cfgreset">Reload</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>3 · Solve</h2>
+      <label class="f"><span>time budget (seconds)</span>
+        <input type="number" id="seconds" value="60" min="1" max="3600" step="5"></label>
+      <button id="solve" class="primary wide">Solve</button>
+      <div id="progress" style="margin-top:9px;display:none">
+        <div class="bar"><i></i></div>
+        <div class="small muted" id="progtext" style="margin-top:4px"></div>
+      </div>
+      <div id="solveerr" class="err" style="margin-top:7px"></div>
+    </div>
+
+    <div class="card">
+      <h2>Current layout</h2>
+      <div id="curinfo" class="small muted">Nothing solved yet.</div>
+      <div class="row" style="margin-top:8px">
+        <input type="text" id="savename" placeholder="name this layout">
+        <button id="save">Save</button>
+      </div>
+    </div>
+  </aside>
+
+  <main id="main">
+    <div class="tabs">
+      <button data-t="layout" class="on">Layout</button>
+      <button data-t="cuts">Cut list</button>
+      <button data-t="cost">Cost</button>
+      <button data-t="saved">Saved &amp; compare</button>
+    </div>
+
+    <section class="pane on" id="p-layout">
+      <div class="card" id="scorebar"><span class="muted">Solve a model to see a layout.</span></div>
+      <div id="legend"></div>
+      <div id="sheets"></div>
+    </section>
+
+    <section class="pane" id="p-cuts"><div id="cutlist"></div></section>
+    <section class="pane" id="p-cost"><div id="costpane"></div></section>
+    <section class="pane" id="p-saved"><div id="savedpane"></div></section>
+  </main>
+</div>
+
+<div id="toast"></div>
+<script src="app.js"></script>

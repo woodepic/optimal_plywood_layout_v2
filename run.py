@@ -18,6 +18,8 @@ def main():
     ap.add_argument("-n", "--restarts", type=int, default=24)
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--improve", type=int, default=500)
+    ap.add_argument("--seconds", type=float, default=None,
+                    help="wall-clock budget; restarts then act as a ceiling")
     ap.add_argument("--out", default="out/best.pkl")
     ap.add_argument("--shave", type=float, default=0.0, help="what-if: shave up to X inches off near-miss widths")
     ap.add_argument("--config", default="config.json", help="cost model JSON; omit to use built-in defaults")
@@ -79,7 +81,7 @@ def main():
 
     best_r, all_r = search(demand, cfg, args.restarts, args.improve,
                            base_seed=args.seed, workers=args.workers,
-                           on_result=note,
+                           on_result=note, max_seconds=args.seconds,
                            extra={"exact_fill_probe": not args.no_exact_fill,
                                   "block_lift": args.block_lift,
                                   "mitre_stop_cost": args.mitre_stop_cost,

@@ -18,6 +18,22 @@ from .model import CutConfig, PartType, Pattern
 from .validate import LayoutError, check_job
 
 
+# Measured throughput of one worker: local-search iterations per second. Used to size
+# a restart so that several complete inside a wall-clock budget instead of one
+# straddling it.
+ITERS_PER_WORKER_SECOND = 65
+
+
+def iters_for_budget(seconds: float, lo: int = 150, hi: int = 4000) -> int:
+    """Pick a per-restart iteration count for a wall-clock budget.
+
+    Aims for a restart lasting about a third of the budget, so roughly three waves of
+    workers complete. Too high and nothing finishes before the deadline; too low and
+    the search never gets past construction into the local search that does the work.
+    """
+    return max(lo, min(hi, int(seconds * ITERS_PER_WORKER_SECOND / 3)))
+
+
 def restart_seed(base: int, index: int) -> int:
     return base * 100003 + index
 
@@ -89,11 +105,19 @@ def _work(index: int) -> Restart:
 
 def search(demand: list[PartType], cfg: CutConfig, restarts: int, iters: int,
            base_seed: int = 0, workers: int | None = None, on_result=None,
-           extra: dict | None = None):
-    """Run `restarts` independent restarts, returning (best_patterns, all Restarts).
+           extra: dict | None = None, max_seconds: float | None = None):
+    """Run independent restarts, returning (best Restart, all Restarts).
 
     workers=1 runs in-process, which keeps tracebacks readable when debugging.
+
+    max_seconds stops accepting results once the deadline passes, so the caller can ask
+    for "the best you can do in 60 seconds" instead of guessing a restart count. The
+    restart budget then acts as a ceiling rather than a target, and results already in
+    flight are discarded when the pool shuts down -- so the deadline is honoured
+    roughly, not to the millisecond.
     """
+    import time as _time
+    deadline = None if max_seconds is None else _time.monotonic() + max_seconds
     if workers is None:
         workers = min(os.cpu_count() or 1, restarts)
 
@@ -104,18 +128,43 @@ def search(demand: list[PartType], cfg: CutConfig, restarts: int, iters: int,
             out.append(r)
             if on_result:
                 on_result(r)
+            if deadline is not None and _time.monotonic() >= deadline:
+                break
     else:
         import multiprocessing as mp
         ctx = mp.get_context("spawn")
         with ctx.Pool(workers, initializer=_init,
                       initargs=(demand, cfg, base_seed, iters, extra)) as pool:
-            for r in pool.imap_unordered(_work, range(restarts), chunksize=1):
+            it = pool.imap_unordered(_work, range(restarts), chunksize=1)
+            while True:
+                # The deadline is enforced by waiting on the iterator with a timeout,
+                # not by checking the clock after each result. Checking afterwards only
+                # works if results actually arrive: with iters set high enough that one
+                # restart outlasts the whole budget, the loop would block forever and
+                # the budget would be silently ignored.
+                remaining = None
+                if deadline is not None:
+                    remaining = deadline - _time.monotonic()
+                    if remaining <= 0:
+                        pool.terminate()
+                        break
+                try:
+                    r = it.next(timeout=remaining)
+                except mp.TimeoutError:
+                    pool.terminate()
+                    break
+                except StopIteration:
+                    break
                 out.append(r)
                 if on_result:
                     on_result(r)
 
     valid = [r for r in out if r.patterns is not None]
     if not valid:
+        if not out and max_seconds is not None:
+            raise RuntimeError(
+                f"no restart finished within {max_seconds:.0f}s at {iters} local-search "
+                f"iterations each. Allow more time, or lower iters.")
         raise RuntimeError("every restart failed validation")
     best = min(valid, key=lambda r: r.dollars)
     return best, out
