@@ -39,7 +39,16 @@ def sheet_to_dict(pat: Pattern, cfg: CutConfig, width_colors: dict[int, int],
         for pl in s.placements:
             parts.append({
                 "x": pl.offset, "len": pl.length, "w": pl.width, "y": y,
-                "label": f"{fmt(pl.part.w)} x {fmt(pl.part.l)}",
+                # Labelled AS PLACED: width across the strip first, then length along
+                # it. The canonical part dimensions read the other way round for a
+                # rotated part, so a 6-7/8 x 22-3/4 panel sitting 22-3/4 across its
+                # strip looked as though it had been given the wrong colour.
+                "label": f"{fmt(pl.width)} x {fmt(pl.length)}",
+                "part_label": f"{fmt(pl.part.w)} x {fmt(pl.part.l)}",
+                # Coloured by the PART's own width, not by the strip's. With non-exact
+                # 2-stage a strip holds parts of many widths, so colouring by the rip
+                # width painted a whole strip one colour and hid the distinction.
+                "color": width_colors[pl.width],
                 "trim": pl.width < s.width,
                 "trim_to": pl.width if pl.width < s.width else None,
             })
@@ -123,9 +132,14 @@ def layout_to_dict(patterns: list[Pattern], demand: list[PartType],
     sc = score(patterns, cfg)
     order, _ = sequence_rips(patterns, cfg)
 
-    # stable colour per distinct strip width across the WHOLE job, so equal widths are
-    # recognisable at a glance from sheet to sheet -- the thing that makes rips batch
-    widths = sorted({s.width for p in patterns for s in p.strips}, reverse=True)
+    # One colour per distinct WIDTH, over every width that appears anywhere in the job
+    # -- part widths and rip widths alike -- indexed in sorted order so the numerically
+    # closest widths land on adjacent palette entries, which are the furthest apart
+    # perceptually. Stable across sheets by construction, since the map is built once
+    # for the whole job.
+    part_widths = {pl.width for p in patterns for s in p.strips for pl in s.placements}
+    strip_widths = {s.width for p in patterns for s in p.strips}
+    widths = sorted(part_widths | strip_widths, reverse=True)
     width_colors = {w: i for i, w in enumerate(widths)}
 
     sheets = [sheet_to_dict(patterns[i], cfg, width_colors, i) for i in order]
@@ -190,8 +204,10 @@ def layout_to_dict(patterns: list[Pattern], demand: list[PartType],
                   "mitre_reachable_parts": f["mitre_reachable_parts"]},
         "config": config_to_dict(cfg),
         "widths": [{"width": w, "width_in": to_inches(w), "color": width_colors[w],
-                    "count": sum(1 for p in patterns for s in p.strips
-                                 if s.width == w),
+                    "parts": sum(1 for p in patterns for s in p.strips
+                                 for pl in s.placements if pl.width == w),
+                    "strips": sum(1 for p in patterns for s in p.strips
+                                  if s.width == w),
                     "saw": "track" if w > cfg.mitre_max_crosscut_width else "mitre"}
                    for w in widths],
         "rip_plan": plan,

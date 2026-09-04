@@ -170,6 +170,11 @@ def test_real_champion_waste_is_exact():
 
 
 def test_one_colour_index_per_distinct_width():
+    """Colour keys off each PART's own width, and is identical across sheets.
+
+    Keying off the strip's rip width painted a whole strip one colour, so a sheet
+    holding a dozen different widths showed two.
+    """
     cfg, demand, pats = _tiny()
     pats = pats + [pats[0]]
     j = layout_to_dict(pats, demand, cfg)
@@ -178,13 +183,34 @@ def test_one_colour_index_per_distinct_width():
         for st in sh["strips"]:
             w2c.setdefault(st["width"], set()).add(st["color"])
             c2w.setdefault(st["color"], set()).add(st["width"])
+            for p in st["parts"]:
+                w2c.setdefault(p["w"], set()).add(p["color"])
+                c2w.setdefault(p["color"], set()).add(p["w"])
     for w, cs in w2c.items():
-        check(len(cs) == 1, f"width {w} got {len(cs)} colour indices")
+        check(len(cs) == 1, f"width {w} got {len(cs)} colour indices: {cs}")
     for c, ws in c2w.items():
         check(len(ws) == 1, f"colour index {c} shared by widths {ws}")
-    # indices must be contiguous from 0 so the palette is used from its start
     check(sorted(c2w) == list(range(len(c2w))),
           f"colour indices are not contiguous: {sorted(c2w)}")
+    # the legend must cover every width that appears, part or rip
+    legend = {w["width"] for w in j["widths"]}
+    check(legend == set(w2c),
+          f"legend covers {len(legend)} widths but {len(w2c)} appear in the layout")
+
+
+def test_parts_in_one_strip_get_distinct_colours_when_widths_differ():
+    cfg = CutConfig()
+    a = PartType(w=to_units(20), l=to_units(30), thickness=0.5, qty=1, label="20x30")
+    b = PartType(w=to_units(12), l=to_units(30), thickness=0.5, qty=1, label="12x30")
+    s = Strip(width=to_units(20))
+    s.placements.append(Placement(part=a, length=to_units(30), width=to_units(20),
+                                  offset=0))
+    s.placements.append(Placement(part=b, length=to_units(30), width=to_units(12),
+                                  offset=to_units(30) + cfg.kerf_mitre_saw))
+    j = layout_to_dict([Pattern(thickness=0.5, strips=[s])], [a, b], cfg)
+    cols = [p["color"] for p in j["sheets"][0]["strips"][0]["parts"]]
+    check(len(set(cols)) == 2,
+          f"two parts of different widths in one strip share a colour: {cols}")
 
 
 if __name__ == "__main__":
