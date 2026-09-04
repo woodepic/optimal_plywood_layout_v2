@@ -61,7 +61,19 @@
     <section class="pane on" id="p-layout">
       <div class="card" id="scorebar"><span class="muted">Solve a model to see a layout.</span></div>
       <div id="legend"></div>
-      <div id="sheets"></div>
+      <div id="viewctl" class="card row" style="gap:10px;flex-wrap:wrap">
+        <button id="zfit">Fit all</button>
+        <button id="zone">100%</button>
+        <button id="zout">−</button><button id="zin">+</button>
+        <span class="small muted mono" id="zlabel">100%</span>
+        <label class="small muted" style="margin-left:auto">columns
+          <select id="cols" style="width:auto;display:inline-block;margin-left:5px">
+            <option value="0">auto</option><option>1</option><option>2</option>
+            <option>3</option><option>4</option><option>5</option><option>6</option>
+          </select></label>
+        <span class="small muted">scroll to zoom at the cursor · drag to pan</span>
+      </div>
+      <div id="viewport"><div id="canvas"></div></div>
     </section>
 
     <section class="pane" id="p-cuts"><div id="cutlist"></div></section>

@@ -33,6 +33,7 @@ from flask import Flask, jsonify, request, send_from_directory
 from src.cost import score
 from src.model import CutConfig, config_from_dict, config_to_dict, load_config
 from src.parts import area_bound, load_demand
+from src.records import file_sha, maybe_add, summarise as records_summary
 from src.search import iters_for_budget, search
 from src.serialize import layout_to_dict
 from src.validate import check_job
@@ -40,8 +41,41 @@ from src.validate import check_job
 STATE = ROOT / "out" / "webapp"
 UPLOADS = STATE / "uploads"
 SAVED = STATE / "saved"
-for d in (UPLOADS, SAVED):
+RECORDS = STATE / "records"
+for d in (UPLOADS, SAVED, RECORDS):
     d.mkdir(parents=True, exist_ok=True)
+
+
+def seed_records_from_champion():
+    """Adopt out/best.pkl as the first record for whichever STEP file produced it.
+
+    The CLI has been setting records since long before this UI existed, and the best
+    layout found so far lives in out/best.pkl. Without this it would be invisible here.
+    The demand lists must match, so a champion is never attached to the wrong model.
+    """
+    champ = ROOT / "out" / "best.pkl"
+    if not champ.exists():
+        return
+    try:
+        b = _load_bundle(champ)
+    except Exception:
+        return
+    key = lambda d: sorted((p.w, p.l, p.thickness, p.qty) for p in d)
+    for step in sorted(ROOT.glob("*.step")) + sorted(ROOT.glob("*.stp")):
+        try:
+            cfg = config_from_dict(b["cfg_fields"]) if b.get("cfg_fields") \
+                else CutConfig()
+            if key(load_demand(str(step), cfg)) != key(b["demand"]):
+                continue
+        except Exception:
+            continue
+        sha = file_sha(step)
+        added = maybe_add(RECORDS, sha, step.name, b["patterns"], b["demand"], cfg,
+                          {**b.get("provenance", {}), "source": "out/best.pkl"})
+        if added:
+            print(f"  seeded record from out/best.pkl: "
+                  f"${added['dollars']:,.2f} for {step.name}")
+        return
 
 app = Flask(__name__, static_folder="static", static_url_path="")
 app.config["MAX_CONTENT_LENGTH"] = 200 * 1024 * 1024
@@ -61,6 +95,26 @@ def _cfg_from_request(data) -> CutConfig:
 def _load_bundle(path: Path):
     with open(path, "rb") as f:
         return pickle.load(f)
+
+
+def _ensure_sha(sid: str, bundle: dict) -> dict:
+    """Backfill the file hash on upload bundles written before it was recorded.
+
+    Without this an older upload solves with sha="", which records.maybe_add would
+    treat as its own record family -- so every solve would look like a first-ever
+    record regardless of how it scored.
+    """
+    if bundle.get("sha"):
+        return bundle
+    step = Path(bundle.get("step", ""))
+    if not step.exists():
+        raise RuntimeError(
+            f"upload {sid} predates file hashing and its STEP file is gone; "
+            f"re-upload the model")
+    bundle["sha"] = file_sha(step)
+    with open(UPLOADS / f"{sid}.demand.pkl", "wb") as fh:
+        pickle.dump(bundle, fh)
+    return bundle
 
 
 # --- static -----------------------------------------------------------------------
@@ -106,6 +160,23 @@ def upload():
     path = UPLOADS / f"{sid}.step"
     f.save(path)
 
+    # Identify the model by its bytes, so re-uploading it continues the same record
+    # family instead of starting a new one under a fresh id.
+    sha = file_sha(path)
+    for old in UPLOADS.glob("*.demand.pkl"):
+        try:
+            b = _load_bundle(old)
+        except Exception:
+            continue
+        if b.get("sha") == sha:
+            path.unlink(missing_ok=True)
+            oid = old.name.split(".")[0]
+            d = b["demand"]
+            return jsonify({"id": oid, "filename": b["filename"], "sha": sha,
+                            "reused": True, "parts": sum(p.qty for p in d),
+                            "types": len(d),
+                            "thicknesses": _thickness_rows(d, _cfg_from_request(None))})
+
     cfg = _cfg_from_request(None)
     try:
         demand = load_demand(str(path), cfg)
@@ -114,9 +185,17 @@ def upload():
         return jsonify({"error": str(e)}), 400
 
     with open(UPLOADS / f"{sid}.demand.pkl", "wb") as fh:
-        pickle.dump({"demand": demand, "step": str(path),
+        pickle.dump({"demand": demand, "step": str(path), "sha": sha,
                      "filename": f.filename}, fh)
 
+    return jsonify({
+        "id": sid, "filename": f.filename, "sha": sha, "reused": False,
+        "parts": sum(p.qty for p in demand), "types": len(demand),
+        "thicknesses": _thickness_rows(demand, cfg),
+    })
+
+
+def _thickness_rows(demand, cfg):
     bounds = area_bound(demand, cfg)
     by_t: dict[float, dict] = {}
     for pt in demand:
@@ -124,15 +203,10 @@ def upload():
         e["parts"] += pt.qty
         e["types"] += 1
         e["area"] += pt.area * pt.qty
-    return jsonify({
-        "id": sid, "filename": f.filename,
-        "parts": sum(p.qty for p in demand), "types": len(demand),
-        "thicknesses": [
-            {"thickness": t, "parts": v["parts"], "types": v["types"],
+    return [{"thickness": t, "parts": v["parts"], "types": v["types"],
              "sqft": v["area"] / (32 * 32 * 144),
              "floor": bounds[t], "floor_int": int(-(-bounds[t] // 1))}
-            for t, v in sorted(by_t.items(), reverse=True)],
-    })
+            for t, v in sorted(by_t.items(), reverse=True)]
 
 
 @app.get("/api/uploads")
@@ -151,7 +225,7 @@ def list_uploads():
 def _run_solve(job_id: str, sid: str, cfg: CutConfig, seconds: float, seed: int):
     job = _jobs[job_id]
     try:
-        b = _load_bundle(UPLOADS / f"{sid}.demand.pkl")
+        b = _ensure_sha(sid, _load_bundle(UPLOADS / f"{sid}.demand.pkl"))
         demand = b["demand"]
         t0 = time.monotonic()
 
@@ -178,6 +252,11 @@ def _run_solve(job_id: str, sid: str, cfg: CutConfig, seconds: float, seed: int)
             pickle.dump({"patterns": best.patterns, "demand": demand,
                          "cfg_fields": config_to_dict(cfg),
                          "provenance": payload["provenance"]}, fh)
+        # A new record is written, never an overwrite, so a beaten record survives --
+        # the cost model that made it a record may be the one you return to.
+        rec = maybe_add(RECORDS, b["sha"], b["filename"], best.patterns,
+                        demand, cfg, payload["provenance"])
+        payload["record"] = rec
         with _lock:
             job["status"] = "done"
             job["result"] = payload
@@ -204,7 +283,8 @@ def start_solve():
     job_id = uuid.uuid4().hex[:12]
     iters = int(data.get("iters") or iters_for_budget(seconds))
     _jobs[job_id] = {"status": "running", "done": 0, "best": None,
-                     "elapsed": 0.0, "seconds": seconds, "iters": iters}
+                     "elapsed": 0.0, "seconds": seconds, "iters": iters,
+                     "t0": time.monotonic()}
     threading.Thread(target=_run_solve, args=(job_id, sid, cfg, seconds, seed),
                      daemon=True).start()
     return jsonify({"job_id": job_id})
@@ -216,19 +296,23 @@ def poll_solve(job_id):
     if job is None:
         return jsonify({"error": "unknown job"}), 404
     with _lock:
-        return jsonify(dict(job))
+        out = dict(job)
+    # Elapsed is computed on read, not on restart completion. It used to be updated
+    # only inside the per-restart callback, so with restarts taking tens of seconds the
+    # bar sat frozen between them however fast the client polled.
+    if out.get("status") == "running" and out.get("t0"):
+        out["elapsed"] = time.monotonic() - out["t0"]
+    out.pop("t0", None)
+    return jsonify(out)
 
 
 # --- rescore, save, compare -------------------------------------------------------
 
 def _bundle_for(ref: str):
-    if ref.startswith("job_"):
-        p = STATE / f"{ref}.pkl"
-    else:
-        p = SAVED / f"{ref}.pkl"
-    if not p.exists():
-        return None
-    return _load_bundle(p)
+    for p in (STATE / f"{ref}.pkl", SAVED / f"{ref}.pkl", RECORDS / f"{ref}.pkl"):
+        if p.exists():
+            return _load_bundle(p)
+    return None
 
 
 @app.post("/api/rescore")
@@ -292,6 +376,14 @@ def list_saved():
     return jsonify({"config": config_to_dict(cfg), "layouts": out})
 
 
+@app.get("/api/records")
+def list_records():
+    p = ROOT / "config.json"
+    cfg = load_config(str(p)) if p.exists() else CutConfig()
+    return jsonify({"config": config_to_dict(cfg),
+                    "records": records_summary(RECORDS, cfg)})
+
+
 @app.delete("/api/saved/<lid>")
 def delete_saved(lid):
     p = SAVED / f"{lid}.pkl"
@@ -320,6 +412,8 @@ if __name__ == "__main__":
                     help="0.0.0.0 makes it reachable from other devices on the LAN")
     ap.add_argument("--port", type=int, default=8000)
     a = ap.parse_args()
+
+    seed_records_from_champion()
 
     import socket
     try:

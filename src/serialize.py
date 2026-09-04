@@ -31,6 +31,8 @@ def sheet_to_dict(pat: Pattern, cfg: CutConfig, width_colors: dict[int, int],
 
     strips = []
     cuts = []
+    waste = []
+    kerf_area = 0
     for i, s, y in rows:
         wide = s.width > cfg.mitre_max_crosscut_width
         parts = []
@@ -42,6 +44,20 @@ def sheet_to_dict(pat: Pattern, cfg: CutConfig, width_colors: dict[int, int],
                 "trim_to": pl.width if pl.width < s.width else None,
             })
         used_len = s.used_length(cfg)
+
+        # Every square inch that is not a part is waste, and all of it gets hatched.
+        # Previously only the strip's end offcut was drawn, which left two kinds of
+        # waste invisible: the sliver beside a part narrower than its strip, and the
+        # band left over after the last rip.
+        for pl in s.placements:
+            if pl.width < s.width:
+                waste.append({"x": pl.offset, "y": y + pl.width, "w": pl.length,
+                              "h": s.width - pl.width, "kind": "trim"})
+        if along - used_len > 0:
+            waste.append({"x": used_len, "y": y, "w": along - used_len,
+                          "h": s.width, "kind": "offcut"})
+        kerf_area += max(0, len(s.placements) - 1) * cfg.kerf_mitre_saw * s.width
+
         strips.append({
             "index": i, "width": s.width, "y": y,
             "saw": "track" if wide else "mitre",
@@ -78,6 +94,11 @@ def sheet_to_dict(pat: Pattern, cfg: CutConfig, width_colors: dict[int, int],
                              "to": pl.offset + pl.length,
                              "label": f"trim to {fmt(pl.width)}"})
 
+    if across - used_across > 0:
+        waste.append({"x": 0, "y": used_across, "w": along,
+                      "h": across - used_across, "kind": "edge"})
+    kerf_area += max(0, len(pat.strips) - 1) * cfg.kerf_track_saw * along
+
     part_area = sum(pl.width * pl.length for s in pat.strips for pl in s.placements)
     return {
         "index": index,
@@ -89,6 +110,9 @@ def sheet_to_dict(pat: Pattern, cfg: CutConfig, width_colors: dict[int, int],
         "waste_across": across - used_across,
         "strips": strips,
         "cuts": cuts,
+        "waste": waste,
+        "kerf_area": kerf_area,
+        "part_area": part_area,
         "counts": pat.counts(cfg),
     }
 
